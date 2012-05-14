@@ -1,0 +1,4 @@
+#!/bin/bash
+# 
+#
+${0%/*}/../dicom2series/dicom2series.sh $*

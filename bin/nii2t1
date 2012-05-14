@@ -1,0 +1,4 @@
+#!/bin/bash
+# 
+#
+${0%/*}/../nii2t1/nii2t1_batch.sh $*

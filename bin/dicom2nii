@@ -1,0 +1,4 @@
+#!/bin/bash
+# 
+#
+${0%/*}/../dicom2nii/dicom2nii_batch.sh $*
