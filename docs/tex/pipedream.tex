@@ -140,6 +140,8 @@ colorlinks,linkcolor={blue},citecolor={blue},urlcolor={blue},
   morekeywords={*,...}               % if you want to add more keywords to the set
 }
 
+\lstdefinestyle{bash}{language=bash} 
+\lstdefinestyle{perl}{language=perl} 
 
 %  This is a template for Papers to the Insight Journal. 
 %  It is comparable to a technical report format.
@@ -162,7 +164,7 @@ colorlinks,linkcolor={blue},citecolor={blue},urlcolor={blue},
 
 % At minimum, give your name and an email address.  You can include a
 % snail-mail address if you like.
-\author{P.Cook, B. Avants, N. Tustison, Y. Zheng, J. Duda, J. Gee}
+\author{P.Cook, B. Avants, N. Tustison, J. Duda, J. Gee}
 \authoraddress{Penn Image Computing And Science Laboratory\\
 University of Pennsylvania}
 
@@ -210,12 +212,50 @@ University of Pennsylvania}
 \tableofcontents
 \newpage
 \section*{Introduction}
-Additional information is available online -- see 
-\href{https://sourceforge.net/projects/neuropipedream/}\\{PipeDream
-  Homepage :
-  https://sourceforge.net/projects/neuropipedream/} 
 
-Pipedream requires the ANTS package and dcm2nii from mricron as well as Camino if you are doing DTI processing.  Google ``ANTS picsl'' for ANTS.  These programs may be installed already so please check before installing.
+For the latest updates to the code and this document, please see the PipeDream online repository at \url{https://github.com/cookpa/pipedream}. 
+
+This document covers the installation of PipeDream and related software, and the use of the PipeDream tools to process an example data set.
+
+\section{Installation}
+
+PipeDream assumes the basic unix tools that exist on GNU / Linux. On most Linux installations, everything you need will be available by default.
+
+\subsection{Prerequisites on Mac OS X}
+
+The first thing you will need to do is install Xcode, which provides the necessary compilers, git, and other useful tools.
+
+Next, we recommend the Homebrew package manager \url{http://mxcl.github.com/homebrew/}. 
+
+Mac OS X is based on BSD Unix, so there may be some differences in the implementation of unix tools. As of 10.7 (Lion), there are no known incompatibilities with PipeDream. However, you may optionally install the GNU Core Utils, which you can do with Homebrew:
+\begin{lstlisting}[style=bash]
+  brew install coreutils
+\end{lstlisting}
+
+This will install the GNU tools, however they will be prefixed with a g, so ``ls" will be called ``gls" and so on. You can create symlinks in \code{/usr/local/bin} to get around this, such that ``ls" etc point to the GNU tools.    
+
+\subsection{CMake}
+
+\subsection{ITK}
+
+\subsection{ANTS}
+
+\subsection{GDCM}
+
+\subsection{MRIcron}
+
+\subsection{Camino}
+
+\subsection{Other tools}
+
+These tools are not required by PipeDream but may be useful to many users.
+
+\subsubsection{ITK-SNAP}
+
+\subsubsection{convert3d}
+ 
+
+\section{Running the pipelines}
 
 The pipedream neuroimaging pipeline has five stages: 
 \begin{enumerate}
@@ -226,116 +266,17 @@ The pipedream neuroimaging pipeline has five stages:
 \item Perform statistical analyses.  
 \end{enumerate}
 
-We cover each step in turn, briefly, here. 
-
+We cover each step in turn in the following sections. 
 
 \footnote{This document is a work in progress. Please check for updates with each release.}
 
 \section{Data Organization and study design}
 
-Correct data organization should begin at the study design phase. Subject identifiers should uniquely identify a subject and should not contain protected health information. Time points should be identified as specifically as possible, preferably with scan dates rather than symbolic names. If a study involves multiple sources of information, for example demographic information and imaging, the data organization should be planned ahead of time to facilitate interoperability.
+PipeDream is designed to work with DICOM data, and contains tools for properly organizing DICOM files and converting them to NIFTI-1 format. If you do not have access to DICOM data, you can replicate the data organization and pick up the pipeline at the NIFTI stage.
 
-Choosing subject and scan identifiers intelligently is important for facilitating scripting, for ensuring data integrity, and for integrating imaging with other information, for example from a database. A common error is to choose conventions that are easily navigable by humans, but not by computers. A human can easily interpret $1/1/01$, $1/1/2001$, $01/01/2001$, ``1 Jan 2001", ``January 1st 2001", as the same information, but a computer will think these are all different unless it has been specially trained to interpret dates. It is much better to rely on literal equivalence, for dates we recommend use of the ``YYYYMMDD'' date format, which allows computers to naturally sort dates correctly. This makes it easier to do things like pick the first scan for a given subject.
-
-An example of a good naming convention is to use a fixed-width, five-digit number to uniquely identify each subject both in an online database and in the imaging repository, with a scan date in the format YYYYMMDD. For example, if subject 42001 is scanned on July 1st 2010, then his data would be found in the directory $42001/20100701/$. Now we can easily see when each visit was and compute how much time elapsed between them, which is important for longitudinal studies. 
-
-Subject identifiers should be alphanumeric and not include special characters that may cause problems for scripts. Alphanumeric includes all letters and numbers, plus the underscore character \_. Other characters have special meaning in various software packages and may cause problems. 
-
-\section{Tools for processing DICOM data}
-
-The tools in this section will allow you to organize your DICOM data in Pipedream format and convert it to NIfTI for postprocessing.
-
-The PipeDream format is $basedir/subject/timepoint/modality$.  The ``modality''  name must uniquely identify each scan that is acquired in a particular visit. Sometimes there may be multiple image series for a particular modality, for example if an imaging series is repeated in order to boost signal to noise. In this case, scans should be distinguished with a leading number, for example 0002\_t1\_mpr\_AX\_MPRAGE, 0003\_t1\_mpr\_AX\_MPRAGE. Scan names should not be a substring of another, eg if you have ``t1\_mpr\_AX\_MPRAGE'', you should not have ``AX\_MPRAGE'' in the same directory.
-
-Scan names and directories should be alphanumeric. Spaces and other special characters will cause problems.
-
-If your data is already organized this way, it is ready for Pipedream. Otherwise, you may wish to run dicom2series.
- 
-
-\subsection{dicom2series}
-
-The dicom2series command is designed to organize dicom files into a Pipedream compatible format. The input data must be separated by subject, but need not be separated by date or modality. 
-\begin{verbatim}
-  dicom2series/dicom2series.sh <output_dir> <rename_files> <dicom_file1> ... <dicomfileN>
-\end{verbatim}
-Where output\_dir is the output directory, rename\_files is a flag set to 1 to rename files according to their header information, and 0 to preserve original file names. The input files can contain both dicom and non-dicom files (the latter will not be copied to the output directory), but must contain only files from a single subject. 
-
-The data will be sorted into pipedream format. The output directory name should be the unique subject identifier, dicom2series will organize scans according to subject/timepoint/modality. The timepoint is the acquisition date. The ``modality'' is the series number and protocol name. 
-
-Spaces and other metacharacters that are present in protocol names will be removed in the output.
-
-The program may fail if your dicom files are strange, for example if they are missing series numbers. If you have a very large number of dicom files, or you have badly formatted data (eg, with spaces in the file names), the command line above may fail, but you can get around this with \textbf{xargs}. For example,
-\begin{verbatim}
-  find ./data/subject -type f -print0 | xargs -0 dicom2series.sh subjectsDICOM/subject 0
-\end{verbatim}
-will find all files inside $data/subject$ and pipe them to dicom2series in batches. 
+In all processing, images are identified by a unique subject identifier and a scan date. Subject identifiers are chosen by the user. They should be alphanumeric and not include special characters that may cause problems for scripts. Alphanumeric includes all letters and numbers, plus the underscore character \_. Other characters have special meaning in various software packages and may cause problems. 
 
 
-\subsection{dicom2t1}
-
-Once all subjects are organized in Pipedream format, the next step is to convert the DICOM T1 scans to NiFTI format. We recommend separating the DICOM and NIfTI base directories and making your DICOM data read-only.
-
-This can be done in parallel or in series, depending on the number of subjects. The call is
-\begin{lstlisting}
-  dicom2t1/dicom2t1_batch.sh <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> blah blah blah blah 
-\end{lstlisting}
-Set queue type to ``sge'', ``voxbo'' to submit jobs to a cluster or ``none'' to run on the local machine. The subject list
-is a newline separated list of subjects, such as you would get by typing
-\begin{verbatim}
-  ls subjectsDICOM > subjects.txt
-\end{verbatim}
-assuming you have not put other files or directories into subjectsDICOM.
-
-The protocol list is a list of structural imaging protocols, typically this will contain only one line but sometimes
-you may have more, for example for multi-site studies. The format is
-\begin{verbatim}
-  protocolName    shortName
-\end{verbatim}
-where the protocolName identifies the scan directory, and shortName is a string you want included in the output. For example,
-\begin{verbatim}
-  t1_mpr_AX_MPRAGE    mprage
-\end{verbatim}
-produces output files ending in ``mprage\_t1.nii.gz''. 
-
-The next argument is simply subjectsDICOM/ where you have placed your organized DICOM files for each subject. Lastly, specify
-an output directory. We recommend placing the output outside the directory structure where your original DICOM data reside.
-
-The output from dicom2t1 is 
-\begin{verbatim}
-  output_dir/subject/timepoint/Anatomy/subject_timepoint_shortName_t1.nii.gz
-\end{verbatim}
-where the subject ID and the timepoint are taken from the DICOM directory, and shortName comes from the protocol file.
-
-
-\subsection{dicom2dt}
-
-Converting the DT is a bit more involved than the T1. The dicom2dt program not only converts to NIfTI, but also extracts
-gradient directions, does distortion correction, and computes the diffusion tensor. You call the program in a similar way
-\begin{verbatim}
-  dicom2dt/dicom2dt_batch.sh <queue_type> <subject_list> <protocol_list> <data_dir> \
-                              <output_dir>
-\end{verbatim}
-The files are defined the same way, except that the protocol file may point to a list of b-values and gradient vectors in FSL format.
-Most users will not need to use this feature, and will just list protocol names as with T1. For example:
-
-\begin{verbatim}
-  DTI_30dir_noDiCo_vox2_1000    30dirdt
-  DTI_12dir                     12dirdt        hup12dir.bval    hup12dir.bvec
-\end{verbatim}
-
-For the 12-direction protocols, dicom2dt will use the bval and bvec files to figure out the gradient directions 
-and b-values in the data. These files are stored in FSL format, which is what is produced by dcm2nii. For ``30dirdt'' data, 
-dicom2dt will figure out the b-values and gradients automatically. This option exists because dcm2nii does not get the gradient 
-directions correctly for some data.
-
-It's common to acquire repeat acquisitions of DWI images in the same scanning session. If this happens, then multiple folders
-with the same protocol name will appear in the subject's dicom directory and dicom2dt will combine these automatically.
-
-Motion and distortion correction is done with ANTS by computing affine registration of each DWI to the mean b=0 image. 
-DT reconstruction is done using Camino's ``wdtfit'' program, more information can be found on the Camino website.
-Brain extraction is performed using Atropos segmentation and some morphological operations.
-
-Dicom2dt produces several outputs. All output is prefixed by ``subject\_timepoint\_protocol\_''.
 
 \begin{table}[htdp]
 \caption{default}
