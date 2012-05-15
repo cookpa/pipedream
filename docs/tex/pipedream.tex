@@ -219,13 +219,13 @@ This document covers the installation of PipeDream and related software, and the
 
 \section{Installation}
 
-PipeDream assumes the basic unix tools that exist on GNU / Linux. On most Linux installations, everything you need will be available by default.
+PipeDream assumes the basic unix tools that exist on GNU / Linux. On most Linux installations, everything you need to carry out installation will be available by default. 
+
+The instructions below explain how to obtain and build the software we use in PipeDream. Some of these tools are not affiliated in any way with PipeDream or the PICSL lab. They come with their own licensing agreements, which can be found at the web pages for each tool given below. Since PipeDream is an open-source pipeline, we've chosen to integrate only tools that are freely available (and preferably open source) for academic use.
 
 \subsection{Prerequisites on Mac OS X}
 
-The first thing you will need to do is install Xcode, which provides the necessary compilers, git, and other useful tools.
-
-Next, we recommend the Homebrew package manager \url{http://mxcl.github.com/homebrew/}. 
+PipeDream can run on a Mac OS X system, however you may need to install some extra software. Install Xcode, which provides the necessary compilers, git, and other useful tools. Next, we recommend the Homebrew package manager \url{http://mxcl.github.com/homebrew/}. 
 
 Mac OS X is based on BSD Unix, so there may be some differences in the implementation of unix tools. As of 10.7 (Lion), there are no known incompatibilities with PipeDream. However, you may optionally install the GNU Core Utils, which you can do with Homebrew:
 \begin{lstlisting}[style=bash]
@@ -234,17 +234,79 @@ Mac OS X is based on BSD Unix, so there may be some differences in the implement
 
 This will install the GNU tools, however they will be prefixed with a g, so ``ls" will be called ``gls" and so on. You can create symlinks in \code{/usr/local/bin} to get around this, such that ``ls" etc point to the GNU tools.    
 
+
 \subsection{CMake}
+
+CMake is required for compiling ITK, ANTS, and GDCM, among other things. It can be downloaded from its website \url{http://cmake.org/}. Hombrew users can install it by typing \code{brew install cmake}.
+
+CMake is a very powerful tool, and will do lots of configuration behind the scenes to enable code compilation on your machine. We will just need to know how to use the \code{ccmake} program. The options presented to you in CMake may differ slightly across platforms. For example, on Mac you will be asked which version of OS X to target, but overall the build process is very similar. This is the beauty of CMake, under the hood building on different systems is very different, but with CMake almost all of the necessary work is done for you.
+
 
 \subsection{ITK}
 
+The first thing you'll need to compile is ITK. At the time of writing, both ITK and ANTS are in a development phase, so you'll want to use the latest stable ITK. Clone the repository with git and checkout the nightly-master branch.
+\begin{lstlisting}[style=bash]
+  mkdir ~/src
+  cd ~/src
+  git clone http://itk.org/ITK.git
+  git checkout -b my_nightly_master origin/nightly-master
+\end{lstlisting}
+The above only needs to be done once, to update the source later you can update by pulling the remote nightly-master:
+\begin{lstlisting}[style=bash]
+  git pull origin nightly-master
+\end{lstlisting}
+
+More information about git can be found in the free online git book \url{http://git-scm.com/book}.
+
+Once the source code is checked out, we will proceed to build. We always build outside the source tree.
+\begin{lstlisting}[style=bash]
+  mkdir -p ~/bin/itk
+  cd ~/bin/itk
+  ccmake ~/src/ITK
+\end{lstlisting}
+This will bring up the \code{ccmake} interface. Initially, you will see the message \code{EMPTY CACHE}, meaning CMake hasn't done any configuration yet. Hit C to do an initial configuration. CMake will choose as many settings as it can automatically, and present others to you for review. Navigate to the options and hit enter to toggle boolean options or to enter text where needed.  Turn off building examples and testing to save compilation time. Make sure the \code{CMAKE\_BUILD\_TYPE} says ``Release" - this is important for ANTS too, since debug code is substantially slower. Also make sure that \code{ITK\_BUILD\_ALL\_MODULES} is on. Hit C again to reconfigure. You should now have a CMake screen that looks like figure \ref{fig:itkCCMake}. Hit G to generate the make files and exit. 
+
+Back at the terminal, you can now start compilation with \code{make}.
+
+\begin{figure}
+\includegraphics[width=0.8\textwidth]{figures/itk_ccmake.png} 
+\itkcaption[ITK CCMake screen]{ITK configured in \code{ccmake}.}
+\label{fig:itkCCMake}
+\end{figure}
+
+
 \subsection{ANTS}
+
+ANTS will be checked out and built in a similar way to ITK, except that we use Subversion instead of git (in the future, ANTS will move to git).
+\begin{lstlisting}[style=bash]
+cd ~/src
+svn checkout https://advants.svn.sourceforge.net/svnroot/advants/trunk ants
+mkdir ~/bin/ants
+cd ~/bin/ants
+ccmake ~/src/ants/Examples
+\end{lstlisting}
+As before, set \code{BUILD\_TESTING} off and ensure that the build type is set to ``Release". Reconfigure until everything is set, then generate the makefiles and make.
+
+After building ANTS, it's a good idea to record the version information of ANTS and ITK. 
 
 \subsection{GDCM}
 
+GDCM is available through Sourceforge, which means you can get it using Git or by downloading a tarball from its website \url{http://sourceforge.net/projects/gdcm/}. It builds with CMake. Building should be straightforward following the procedure above. Set \code{GDCM\_BUILD\_APPLICATIONS} on, PipeDream needs these applications to parse DICOM headers.
+
 \subsection{MRIcron}
 
+MRIcron is distributed in binary form from its web page \url{http://www.nitrc.org/projects/mricron}. The package contains several tools, including the \code{mricron} image viewer and the \url{npm} statistical tool. In PipeDream we use the \code{dcm2nii} program that converts DICOM series to NIFTI images.
+
 \subsection{Camino}
+
+Camino is a diffusion MRI toolkit. It can be downloaded from \url{http://camino.org.uk}. It builds directly from the package, assuming you have Oracle Java installed.
+\begin{lstlisting}[style=bash]
+cd ~/bin/
+tar -xzvf /path/to/camino.tgz
+cd camino
+make
+\end{lstlisting}
+
 
 \subsection{Other tools}
 
@@ -252,7 +314,11 @@ These tools are not required by PipeDream but may be useful to many users.
 
 \subsubsection{ITK-SNAP}
 
+ITK-SNAP is useful for image viewing and segmentation, and is avaliable from \url{http://www.itksnap.org}.
+
 \subsubsection{convert3d}
+
+The \code{c3d} command wraps many of the image processing filters of ITK in a command-line tool. It can handle complex operations in memory using an operations stack. See \url{http://www.itksnap.org/pmwiki/pmwiki.php?n=Convert3D.Convert3D}.
  
 
 \section{Running the pipelines}
@@ -266,9 +332,7 @@ The pipedream neuroimaging pipeline has five stages:
 \item Perform statistical analyses.  
 \end{enumerate}
 
-We cover each step in turn in the following sections. 
-
-\footnote{This document is a work in progress. Please check for updates with each release.}
+We cover each step in turn in the following sections. \footnote{This document is a work in progress. Please check for updates with each release.}
 
 \section{Data Organization and study design}
 
@@ -334,7 +398,7 @@ It takes some effort to produce a good template.  So, check with developers to s
 if one is available for your type of data.
 
 \begin{figure}
-\includegraphics[width=0.9\textwidth]{templatefig.jpg} 
+\includegraphics[width=0.9\textwidth]{figures/templatefig.jpg} 
 \itkcaption[Template Prior]{An example template.}
 \vspace{-0.1in}
 \label{fig:template}
