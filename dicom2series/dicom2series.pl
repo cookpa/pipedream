@@ -142,13 +142,11 @@ foreach my $dicomFile (@dicomFiles) {
 
 if ($#problemFiles > -1) {
 
-# There can be a lot of these so don't reprint them all
-#
-#    print "\nThe following dicom files could not be processed, most likely due to missing header information:\n";
-#
-#    foreach my $problemFile (@problemFiles) {
-#	print "$problemFile\n";
-#    }
+    print "\nThe following dicom files could not be processed:\n";
+
+    foreach my $problemFile (@problemFiles) {
+	print "  $problemFile\n";
+    }
 
     print "\n  WARNING: Some dicom files could not be processed, most likely due to missing header information\n\n";
     

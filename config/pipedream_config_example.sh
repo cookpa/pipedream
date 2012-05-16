@@ -27,7 +27,7 @@ export DCM2NIIPATH="/home/pcook/grosspeople/research/mricron/"
 export GDCMPATH="/home/pcook/grosspeople/research/gdcm/bin/"
 #
 # Path to XML files needed by GDCM
-export GDCM_RESOURCES_PATH="/home/pcook/grosspeople/research/gdcm/Source/InformationObjectDefinition"
+export GDCM_RESOURCES_PATH="/home/pcook/grosspeople/research/gdcm/Source/InformationObjectDefinition/"
 
 
 # ====== IMAGE PROCESSING TOOLS ======
@@ -43,10 +43,10 @@ export ANTSPATH="/home/pcook/grosspeople/research/ants_r1098/"
 # 
 # http://camino.org.uk
 #
-export CAMINOPATH="/home/pcook/grosspeople/research/camino/bin"
+export CAMINOPATH="/home/pcook/grosspeople/research/camino/bin/"
 #
 # Java is required by Camino
-export JAVAPATH="/usr/java/latest/bin"
+export JAVAPATH="/usr/java/latest/bin/"
 #
 # Control maximum memory usage by Camino, in Mb
 export CAMINO_HEAP_SIZE=1100

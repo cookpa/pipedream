@@ -217,6 +217,11 @@ For the latest updates to the code and this document, please see the PipeDream o
 
 This document covers the installation of PipeDream and related software, and the use of the PipeDream tools to process an example data set.
 
+
+\section{Documentation and getting help}
+
+This document is designed to help you get up and running using PipeDream. You can get additional help on the command line by running any command without any arguments. If you need further assistance or have any feedback, contact us at \url{mailto:cookpa@mail.med.upenn.edu}.
+
 \section{Installation}
 
 PipeDream assumes the basic unix tools that exist on GNU / Linux. On most Linux installations, everything you need to carry out installation will be available by default. 
@@ -287,7 +292,13 @@ ccmake ~/src/ants/Examples
 \end{lstlisting}
 As before, set \code{BUILD\_TESTING} off and ensure that the build type is set to ``Release". Reconfigure until everything is set, then generate the makefiles and make.
 
-After building ANTS, it's a good idea to record the version information of ANTS and ITK. 
+After building ANTS, it's a good idea to record the version information of ANTS and ITK. This will help the developers reproduce any bugs or performance issues you encounter. Record the source code version information with \code{git} and \code{svn}.
+\begin{lstlisting}[style=bash]
+cd ~/src/ITK
+git show > ~/bin/ants/version_info.txt
+svn info ~/src/ants >> ~/bin/ants/version_info.txt 
+\end{lstlisting}
+
 
 \subsection{GDCM}
 
@@ -319,13 +330,33 @@ ITK-SNAP is useful for image viewing and segmentation, and is avaliable from \ur
 \subsubsection{convert3d}
 
 The \code{c3d} command wraps many of the image processing filters of ITK in a command-line tool. It can handle complex operations in memory using an operations stack. See \url{http://www.itksnap.org/pmwiki/pmwiki.php?n=Convert3D.Convert3D}.
+
+
+\subsection{PipeDream}
+
+\begin{lstlisting}[style=bash]
+  cd ~/bin
+  git clone git://github.com/cookpa/pipedream.git
+  cd pipedream
+  git checkout -b mybranch origin/master
+  cp config/pipedream_config_example.sh config/pipedream_config.sh
+\end{lstlisting}
+
+Edit the \code{config/pipedream\_config.sh} file. Most of the variables are paths to the other software mentioned above. You should also review the \code{qsub} command that will be used to submit jobs to the queue. 
+
+Add the \code{pipedream/bin} directory to your PATH.
+\begin{lstlisting}[style=bash]
+ export PATH=/path/to/pipedream/bin:$PATH
+\end{lstlisting}
+You can add this line to your \code{.bash\_profile} to give you access to PipeDream at login.
  
 
 \section{Running the pipelines}
 
 The pipedream neuroimaging pipeline has five stages: 
 \begin{enumerate}
-\item Organize data.
+\item Organize data
+\item Pre-process individual modality images
 \item Construct a template.  
 \item Run the brain processing pipeline.  
 \item Check results. 
@@ -334,13 +365,31 @@ The pipedream neuroimaging pipeline has five stages:
 
 We cover each step in turn in the following sections. \footnote{This document is a work in progress. Please check for updates with each release.}
 
+
 \section{Data Organization and study design}
 
 PipeDream is designed to work with DICOM data, and contains tools for properly organizing DICOM files and converting them to NIFTI-1 format. If you do not have access to DICOM data, you can replicate the data organization and pick up the pipeline at the NIFTI stage.
 
 In all processing, images are identified by a unique subject identifier and a scan date. Subject identifiers are chosen by the user. They should be alphanumeric and not include special characters that may cause problems for scripts. Alphanumeric includes all letters and numbers, plus the underscore character \_. Other characters have special meaning in various software packages and may cause problems. 
 
+The choice of subject identifiers should be consistent for imaging and non-imaging data that will be part of your study. 
 
+
+\subsection{DICOM data organization}
+
+PipeDream organizes DICOM data from a given subject by date and series number. It does not sort subjects by subject identifier, because the correct choice of identifier is often not present the header. The user needs to choose the subject identifier at run time. The rest of the organization can be done by \code{dicom2series}.
+
+In the absence of public data in DICOM format, we will use a hypothetical example data set. We have a base directory \code{\$RAW\_DICOM\_DIR} that contains subjects numbered 001 through 100. Within \code{\$RAW\_DICOM\_DIR/001}, the DICOM data for subject 001 is stored in some unknown format, perhaps copied from a CD written at the scanner. We can process all the data with the following script.
+\begin{lstlisting}[style=bash]
+ for subj in `seq -w 1 100`; do
+   find -L ${RAW_DICOM_DIR}/$subj -type f -print0 | xargs -0 dicom2series ~/subjectsDICOM/$subj 1 0 
+ done
+\end{lstlisting}
+Here we use the \code{find} utility to list all files within each subject's data directory. The use of \code{-print0} and \code{xargs} make the command robust to large numbers of files, and spaces in the file or directory names. Non-DICOM files will be skipped automatically. 
+
+The output data will be organized by subject, acquisition time, and then by series. 
+
+\section{}
 
 \begin{table}[htdp]
 \caption{default}
