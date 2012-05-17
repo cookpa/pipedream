@@ -387,9 +387,28 @@ In the absence of public data in DICOM format, we will use a hypothetical exampl
 \end{lstlisting}
 Here we use the \code{find} utility to list all files within each subject's data directory. The use of \code{-print0} and \code{xargs} make the command robust to large numbers of files, and spaces in the file or directory names. Non-DICOM files will be skipped automatically. 
 
-The output data will be organized by subject, acquisition time, and then by series. 
+DICOM index files can sometimes confuse \code{dicom2series}. These are usually files called \code{DICOMDIR}. If they are present you can remove them from the above command by adding \code{-not -name DICOMDIR} to the \code{find} command above.
 
-\section{}
+The output data will be organized hierarchically by subject, acquisition time, and then by series. The subject identifier is completely under the user's control and is specified on the command line. The acquisition time is determined from the data and is written in the format \code{YYYY\_MM\_DD\_HHMM} where the first three items are the study date, and the final "HHMM" is hour and minute of the study time. The series are named by series number, protocol name, and series description, in the format \code{NUMBER\_PROTOCOL\_DESCRIPTION}. The output \code{DESCRIPTION} is the concatenation of the protocol name and series description in the data, minus any duplication. Thus if your protocol name is ``DTI30DIR" and your series description is ``DTI30DIR\_ADC" the output description will be ``DTI30DIR\_ADC" not ``DTI30DIR\_DTI30DIR\_ADC".
+
+
+\subsection{DICOM to NIFTI conversion}
+
+The next step is to convert the DICOM data to NIFTI. We recommend keeping the NIFTI data in a separate directory structure. The first thing we do is define a list of protocols that should be converted. That is, the name of protocols as they appear in the \code{subjectsDICOM} directory, minus the series numbers. These should be written to a text file, let's say \code{all_protocols.txt}, one per line, for example
+\begin{lstlisting}[style=bash]
+t1_mpr_AX_MPRAGE
+t2_tse_obl_448_2mm
+DTI_30dir_noDiCo_vox2_1000
+DTI_34dir
+\end{lstlisting}
+
+Next, list the subjects that need processing. Usually this will be every subject listed in \code{subjectsDICOM/}
+\begin{lstlisting}[style=bash]
+  ls subjectsDICOM > subjects.txt  
+\end{lstlisting}
+
+
+
 
 \begin{table}[htdp]
 \caption{default}

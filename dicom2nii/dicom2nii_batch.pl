@@ -9,23 +9,16 @@ use File::Spec;
 use FindBin qw($Bin);
 
 my $usage = qq{
-  Usage: dicom2nii_batch.sh <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> 
+  Usage: dicom2nii <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> 
 
       <queue_type> - type of queue to submit jobs. Either "sge", "voxbo", or "none"
 
-      <subject_list> - Text file containing a list of subject names and optional timepoints. If timepoints are not given, we
-      process all time points available for the subject. 
-        
-        42297		20100619    20110620
-        42294
-        42289		20110503
-      
-      Processes all available time points for 42294, and the specified dates for the other two.
+      <subject_list> - Text file containing a list of subject names.
 
       <protocol_list> - Text file containing protocol names, eg 
 
-      t1_mpr_AX_MPRAGE    
-      t1_cor_MPRAGE
+        t1_mpr_AX_MPRAGE    
+        t1_cor_MPRAGE
 
       All series from matching protocols will be processed.
 

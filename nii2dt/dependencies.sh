@@ -37,26 +37,6 @@ if [[ `which perl 2> /dev/null` == "" ]] ; then
     return 1
 fi
 
-# Look for dcm2nii
-if [[ `which ${DCM2NIIPATH}/dcm2nii 2> /dev/null` == "" ]] ; then
-
-    # Use of which here conveniently tests that files exists and is executable
-    if [[ `which dcm2nii 2> /dev/null` == "" ]] ; then
-	echo "Cannot find dcm2nii executable"
-	return 1
-    fi
-
-    echo "Cannot find dcm2nii at Pipedream default path $DCM2NIIPATH"
-    echo "Using version on system path"
-
-    string=`which dcm2nii`
-    export DCM2NIIPATH=${string%/dcm2nii} 
-
-else
-    export DCM2NIIPATH
-fi
-
-
 # Look for ANTS
 if [[ `which ${ANTSPATH}/ANTS 2> /dev/null` == "" ]] ; then
     
@@ -75,25 +55,6 @@ else
     export ANTSPATH
 fi
 
-
-# Look for GDCM
-if [[ `${GDCMPATH}/gdcmdump` == "" ]] ; then
-    
-    if [[ `gdcmdump` == "" ]]; then 
-	echo "Cannot find gdcm, unable to continue"
-	return 1
-    else
-	echo "Cannot find gdcm at Pipedream default path $GDCMPATH"
-	echo "Using version on system path"
-	string=`which gdcmdump`
-	export GDCMPATH=${string%/gdcmdump}
-    fi
-        
-
-else
-    export GDCMPATH
-fi
- 
 
 if [[ `which  ${CAMINOPATH}/dtfit 2> /dev/null` == "" ]] ; then
 
