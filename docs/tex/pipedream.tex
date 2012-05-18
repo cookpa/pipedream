@@ -160,7 +160,7 @@ colorlinks,linkcolor={blue},citecolor={blue},urlcolor={blue},
 
 % Increment the release number whenever significant changes are made.
 % The author and/or editor can define 'significant' however they like.
-\release{1.00}
+\release{0.1}
 
 % At minimum, give your name and an email address.  You can include a
 % snail-mail address if you like.
@@ -368,7 +368,7 @@ We cover each step in turn in the following sections. \footnote{This document is
 
 \section{Data Organization and study design}
 
-PipeDream is designed to work with DICOM data, and contains tools for properly organizing DICOM files and converting them to NIFTI-1 format. If you do not have access to DICOM data, you can replicate the data organization and pick up the pipeline at the NIFTI stage.
+PipeDream is designed to work with DICOM data, and contains tools for properly organizing DICOM files and converting them to NIFTI-1 format. If you do not have access to DICOM data, you can replicate the data organization and pick up the pipeline at the NIFTI stage, see \ref{sec:dicom2nii}.
 
 In all processing, images are identified by a unique subject identifier and a scan date. Subject identifiers are chosen by the user. They should be alphanumeric and not include special characters that may cause problems for scripts. Alphanumeric includes all letters and numbers, plus the underscore character \_. Other characters have special meaning in various software packages and may cause problems. 
 
@@ -389,12 +389,12 @@ Here we use the \code{find} utility to list all files within each subject's data
 
 DICOM index files can sometimes confuse \code{dicom2series}. These are usually files called \code{DICOMDIR}. If they are present you can remove them from the above command by adding \code{-not -name DICOMDIR} to the \code{find} command above.
 
-The output data will be organized hierarchically by subject, acquisition time, and then by series. The subject identifier is completely under the user's control and is specified on the command line. The acquisition time is determined from the data and is written in the format \code{YYYY\_MM\_DD\_HHMM} where the first three items are the study date, and the final "HHMM" is hour and minute of the study time. The series are named by series number, protocol name, and series description, in the format \code{NUMBER\_PROTOCOL\_DESCRIPTION}. The output \code{DESCRIPTION} is the concatenation of the protocol name and series description in the data, minus any duplication. Thus if your protocol name is ``DTI30DIR" and your series description is ``DTI30DIR\_ADC" the output description will be ``DTI30DIR\_ADC" not ``DTI30DIR\_DTI30DIR\_ADC".
+The output data will be organized hierarchically by subject, acquisition time, and then by series. The subject identifier is completely under the user's control and is specified on the command line. The acquisition time is determined from the data and is written in the format YYYY\_MM\_DD\_HHMM where the first three items are the study date, and the final ``HHMM" is hour and minute of the study time. The series are named by series number, protocol name, and series description, in the format NUMBER\_PROTOCOL\_DESCRIPTION. The output DESCRIPTION is the concatenation of the protocol name and series description in the data, minus any duplication. Thus if your protocol name is ``DTI30DIR" and your series description is ``DTI30DIR\_ADC" the output description will be ``DTI30DIR\_ADC" not ``DTI30DIR\_DTI30DIR\_ADC".
 
 
-\subsection{DICOM to NIFTI conversion}
+\section{DICOM to NIFTI conversion} \label{sec:dicom2nii}
 
-The next step is to convert the DICOM data to NIFTI. We recommend keeping the NIFTI data in a separate directory structure. The first thing we do is define a list of protocols that should be converted. That is, the name of protocols as they appear in the \code{subjectsDICOM} directory, minus the series numbers. These should be written to a text file, let's say \code{all_protocols.txt}, one per line, for example
+We recommend keeping the NIFTI data in a separate directory structure. The first thing we do is define a list of protocols that should be converted. That is, the name of protocols as they appear in the \code{subjectsDICOM} directory, minus the series numbers. These should be written to a text file, let's say \code{all\_protocols.txt}, one per line, for example
 \begin{lstlisting}[style=bash]
 t1_mpr_AX_MPRAGE
 t2_tse_obl_448_2mm
@@ -407,8 +407,38 @@ Next, list the subjects that need processing. Usually this will be every subject
   ls subjectsDICOM > subjects.txt  
 \end{lstlisting}
 
+Now we're ready to run
+\begin{lstlisting}[style=bash]
+ dicom2nii sge subjects.txt  all_protocols.txt subjectsDICOM subjects
+\end{lstlisting}
+
+The output is organized in \code{subjects/subjectID/time/rawNii}. For example, \code{subjects/104391/2007\_07\_10\_1024/rawNii}, which contains:
+\begin{lstlisting}[style=bash]
+104391_2007_07_10_1024_0006_t1_mpr_AX_MPRAGE.nii.gz
+104391_2007_07_10_1024_0011_DTI_30dir_noDiCo_vox2_1000.bval
+104391_2007_07_10_1024_0011_DTI_30dir_noDiCo_vox2_1000.bvec
+104391_2007_07_10_1024_0011_DTI_30dir_noDiCo_vox2_1000.nii.gz
+104391_2007_07_10_1024_0013_DTI_30dir_noDiCo_vox2_1000.bval
+104391_2007_07_10_1024_0013_DTI_30dir_noDiCo_vox2_1000.bvec
+104391_2007_07_10_1024_0013_DTI_30dir_noDiCo_vox2_1000.nii.gz
+104391_2007_07_10_1024_0015_DTI_30dir_noDiCo_vox2_1000.bval
+104391_2007_07_10_1024_0015_DTI_30dir_noDiCo_vox2_1000.bvec
+104391_2007_07_10_1024_0015_DTI_30dir_noDiCo_vox2_1000.nii.gz
+\end{lstlisting}
+The protocol ``t1\_mpr\_AX\_MPRAGE" is a T1 protocol, so the output is a 3D NIFTI image. The protocol ``DTI\_30dir\_noDiCo\_vox2\_1000" is a diffusion protocol, so the output is 4D, and there are two additional files that describe the diffusion gradient vectors.
+
+If your raw data is already in NIFTI format, you can begin processing with PipeDream at this point by copying your data into the structure above. The series numbers can be assigned arbitrarily. The acquisition date can be specified in a format of your choice, we recommend ``YYYY\_MM\_DD", because then the text sorts in the correct temporal order. If you don't have DICOM data you probably won't know study time, but that's only a problem if you have multiple same-day imaging sessions. If that's the case, then you should add ``\_0001", ``\_0002", etc in place of the study time.
+
+In the following sections, we discuss the various programs that do modality-specific pre-processing for the different images that PipeDream supports.
 
 
+\section{Modality specific preprocessing - scalar images}
+
+Scalar images, for example a T1 MRI, do not require any specialized pre-processing, however it is often convenient to rename them into a common format.
+
+\section{Modality specific preprocessing - diffusion images}
+
+% Other pre-processing goes here
 
 \begin{table}[htdp]
 \caption{default}
