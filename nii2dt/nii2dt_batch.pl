@@ -244,11 +244,20 @@ foreach my $subjectCounter (0 .. $#subjects) {
 
 	my $schemeFiles = "";
 
-	if ( defined($bvals{$protocolKey}) ) {
+	if ( defined($bvals{$protocolKey}) && -f $bvals{$protocolKey} ) {
 	    $schemeFiles = "$bvals{$protocolKey} $bvecs{$protocolKey}";
 	}
 	else {
-	    $schemeFiles = "${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_${protocolName}.bval ${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_${protocolName}.bvec";
+	   
+           # Assume repeats have same scheme, grab first one
+           
+           my $bvalFile = `ls ${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_[0-9]*_${protocolName}.bval | head -n 1`;
+           my $bvecFile = `ls ${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_[0-9]*_${protocolName}.bvec | head -n 1`;  
+           
+           chomp $bvalFile;
+           chomp $bvecFile;
+
+           $schemeFiles = "$bvalFile $bvecFile";
 	}
 
 	my $templatePaths = "none none";

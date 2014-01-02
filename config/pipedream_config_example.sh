@@ -84,13 +84,13 @@ export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
 #
 # See the man page for qsub for more detail.
 #
-PIPEDREAMQSUB="qsub -pe serial 2 -V "
+export PIPEDREAMQSUB="qsub -pe serial 2 -V "
 #
 #
 # The Voxbo vbbatch commmand that will be invoked by pipedream. Include path information 
 # and options that may be necessary.
 #
-PIPEDREAMVBBATCH="vbbatch"
+export PIPEDREAMVBBATCH="vbbatch"
 
 
 return 0
