@@ -20,6 +20,9 @@ my $usage = qq {
       not named "anonymize" because there are multiple definitions of what it means to anonymize a dicom header. You should check
       the config file and add fields that should be removed in order to protect subject confidentiality. 
 
+      Private fields cannot be anonymized by gdcmanon. Some PACS systems will copy patient information into private fields where
+      they can't be touched. Always check the output to ensure that the anonymization completed successfully.
+
     <rename_files> - 1 if you want to rename files (if possible) in the output directory, 0 otherwise.
 
  
@@ -78,7 +81,7 @@ if ($anonymize) {
  
       $line =~ s/\s//g;
 
-      if ($line =~ m/^\((\d+,\d+)\)/) {
+      if ($line =~ m/^\((.{4},.{4})\)/) {
 
         my $field = $1;
 
