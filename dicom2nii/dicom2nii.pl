@@ -6,7 +6,7 @@
 my $usage = qq{
 dicom2nii.sh converts dicom series to NIFTI images, doesn't do any addition preprocessing
 
-Usage: dicom2nii.sh <input_base_dir> <subject> <timepoint> <protocol_list> <outputDir> 
+Usage: dicom2nii.sh <input_base_dir> <subject> <timepoint> <protocol_list> <outputDir>
 
 <input_base_dir> - input directory Program looks for scans matching <input_dir>/<subject>/<timepoint>/<series_dir>
 
@@ -21,7 +21,7 @@ Usage: dicom2nii.sh <input_base_dir> <subject> <timepoint> <protocol_list> <outp
 
       All series from matching protocols will be processed.
 
-<outputDir> - Output directory
+<outputDir> - Base output directory
 
 };
 
@@ -57,7 +57,6 @@ else {
 }
 # done with args
 
-
 if (! -d $outputDir ) {
     mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Can't make output directory $outputDir\n\t";
 }
@@ -65,6 +64,7 @@ if (! -d $outputDir ) {
 open PROTOFILE, "<$protocolFile" or die "Can't find protocol list file $protocolFile";
 
 my @protocols;
+my @protocolNames;
 
 while (<PROTOFILE>) {
 
@@ -76,24 +76,26 @@ while (<PROTOFILE>) {
 
     # ignore blank lines
     if ($line) {
-        push(@protocols, $line);
+        my @lineparts = split(" ", $line);
+        push(@protocols, trim($lineparts[0]));
+        push(@protocolNames, trim($lineparts[1]));
     }
 
 }
 
 close PROTOFILE;
 
-
-
 PROTOCOL: foreach my $protocolName (@protocols) {
+
 
   my @dirContents = `ls ${inputBaseDir}/${subject}/${timepoint}`;
 
   foreach my $subdir (@dirContents) {
+    print( "  - $subdir\n");
     if ( $subdir =~ m|^([0-9]+_${protocolName})/?$|m) {
 
       my $seriesName = $1;
-
+      
       print "Transfering DICOM files for scan ${seriesName}\n";
 
       my $outputFileRoot = "${subject}_${timepoint}_${seriesName}";
