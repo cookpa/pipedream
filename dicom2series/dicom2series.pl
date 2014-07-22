@@ -195,8 +195,12 @@ sub getFileInfo {
     # What to return if we can't map this file sensibly
     my @missingInfo = (1, 1, 0, 0, 0);
     
+    # Data types can be different than expected, in which case gdcmdump will print
+    # (0000,0000) ?? (DA) [Value] where the DA in parentheses is the expected data type
+    # 
+    # We match this with (?:\?\? \()?DA\)?
 
-    $header =~ m/\s*\(0008,0020\) DA \[(\d+)/ or return @missingInfo;
+    $header =~ m/\s*\(0008,0020\) (?:\?\? \()?DA\)? \[(\d+)/ or return @missingInfo;
 
     my $acquisitionDate = $1;
     
@@ -204,14 +208,14 @@ sub getFileInfo {
     $acquisitionDate =~ s/(\d{4})(\d{2})(\d{2})/${1}_${2}_${3}/;
 
     # Add time
-    $header =~ m/\s*\(0008,0030\) TM \[(\d{4})/ or return @missingInfo;
+    $header =~ m/\s*\(0008,0030\) (?:\?\? \()?TM\)? \[(\d{4})/ or return @missingInfo;
 
     $acquisitionDate = "${acquisitionDate}_$1";
 
     # Some headers have missing instance numbers, as a fallback use original file name
     my $acquisitionNumber = "";
     
-    if ( $header =~ m/\s*\(0020,0013\) IS \[(\d+)/ ) {
+    if ( $header =~ m/\s*\(0020,0013\) (?:\?\? \()?IS\)? \[(\d+)/ ) {
 	$acquisitionNumber = $1;
 	$acquisitionNumber = sprintf("%.4d", $acquisitionNumber);
     }
@@ -220,18 +224,18 @@ sub getFileInfo {
 	$renameFiles = 0;
     }
     
-    $header =~ m/\s*\(0020,0011\) IS \[(\d+)/ or return @missingInfo;
+    $header =~ m/\s*\(0020,0011\) (?:\?\? \()?IS\)? \[(\d+)/ or return @missingInfo;
 
     my $seriesNumber = $1;
 
     $seriesNumber = sprintf("%.4d", $seriesNumber);
 
     # Prefer protocol name and series description but proceed with one or the other
-    $header =~ m/\s*\(0008,103e\) LO \[([^\]]+)\]/; 
+    $header =~ m/\s*\(0008,103e\) (?:\?\? \()?LO\)? \[([^\]]+)\]/; 
 
     my $seriesDescription = trim($1);
 
-    $header =~ m/\s*\(0018,1030\) LO \[([^\]]+)\]/; 
+    $header =~ m/\s*\(0018,1030\) (?:\?\? \()?LO\)? \[([^\]]+)\]/; 
 
     my $protocolName = trim($1);
 
@@ -262,16 +266,43 @@ sub getFileInfo {
     my $seriesDir = join('_', $seriesNumber, $protocolName);
 
     if (!($seriesDescription eq $protocolName)) {
-        # Append series description
+  
+      my $extraDescription = "";
 
-        # If series description is protocol name followed by something else, don't repeat protocol name
+      if ($seriesDescription =~ m/${protocolName}/) {
+        # If protocol name is substring of series description, don't repeat protocol name
         # Often the case for DTI
+        $extraDescription = $seriesDescription;
 
-        $seriesDescription =~ s/^${protocolName}_?//;
-	
-        $seriesDir = "${seriesDir}_${seriesDescription}";
-    }
-    
+        $extraDescription =~ s/${protocolName}//;
+
+        # Clean up trailing or leading _
+        $extraDescription =~ s/^_//;
+
+        $extraDescription =~ s/_$//;
+
+        # In case protocol name is in the middle
+        $extraDescription =~ s/__/_/g;
+
+
+        
+        
+     }
+     elsif ($protocolName =~ m/${seriesDescription}/) {
+       # If series description is a substring of protocol name, don't repeat it
+       # nothing to add in this case
+       $extraDescription = "";
+     } 
+     else {
+       # Distinct protocol name and description, append both
+       $extraDescription = $seriesDescription; 
+     }
+
+     if ($extraDescription) {
+       $seriesDir = "${seriesDir}_${extraDescription}"; 
+     }
+   }
+
     my $newFileName = $fileBaseName . $fileExtension;
     
     if ( $renameFiles ) {
