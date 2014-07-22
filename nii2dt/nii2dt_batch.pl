@@ -11,7 +11,7 @@ use File::Path;
 
 my $usage = qq{
     
- nii2dt <queue_type> <subject_list> <protocol_list> <data_dir> 
+ nii2dt <queue_type> <subject_list> <protocol_list> <data_dir> <dwi_dir>
 
 
         <queue_type> - type of queue to submit jobs. Either "sge", "voxbo", or "none"
@@ -39,24 +39,25 @@ my $usage = qq{
 
         this option is used when the default bvals / bvecs extracted from dcm2nii are incorrect (rarely the case).
 
+  
+	<data_dir> - input directory. Program looks for scans matching the protocol name in data_dir/SUBJECT/TIMEPOINT/dwi_dir. 
 
-	
-	<data_dir> - input directory. Program looks for scans matching the protocol name in data_dir/SUBJECT/TIMEPOINT/rawNii. 
+  <dwi_dir> - modality specific subdirectory
 
 };
 
 
-my ($queueType, $subjectList, $protocolList, $inputBaseDir);
+my ($queueType, $subjectList, $protocolList, $inputBaseDir, $inputSubDir);
 
 if (!($#ARGV + 1)) {
     print "$usage\n";
     exit 0;
 }
-elsif ($#ARGV < 3) {
+elsif ($#ARGV < 4) {
     die "ERROR: Missing arguments, run without args to see usage\n\t";
 }
 else { 
-    ($queueType, $subjectList, $protocolList, $inputBaseDir) = @ARGV;
+    ($queueType, $subjectList, $protocolList, $inputBaseDir, $inputSubDir) = @ARGV;
 
 }
 
@@ -226,7 +227,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	
  	my $protocolKey = 0;
 	
-	my $dirContents = `ls ${inputBaseDir}/${subject}/${timePoint}/rawNii`;
+	my $dirContents = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}`;
        
 	if ( $dirContents =~ m|(^${subject}_${timePoint}_[0-9]+_${protocolName}.nii.gz)/?|m ) {
 	    $protocolKey = $protocolName;
@@ -251,8 +252,8 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	   
            # Assume repeats have same scheme, grab first one
            
-           my $bvalFile = `ls ${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_[0-9]*_${protocolName}.bval | head -n 1`;
-           my $bvecFile = `ls ${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_[0-9]*_${protocolName}.bvec | head -n 1`;  
+           my $bvalFile = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.bval | head -n 1`;
+           my $bvecFile = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.bvec | head -n 1`;  
            
            chomp $bvalFile;
            chomp $bvecFile;
@@ -267,7 +268,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	}
 
 	# Now get
-	my @dwiImages = `ls ${inputBaseDir}/${subject}/${timePoint}/rawNii/${subject}_${timePoint}_[0-9]*_${protocolName}.nii.gz`;
+	my @dwiImages = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.nii.gz`;
 	
         chomp @dwiImages;
 

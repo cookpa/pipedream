@@ -1,11 +1,11 @@
+
 #!/usr/bin/perl -w
 #
 # Processes of DICOM DWI data and reconstructs diffusion tensors
 #
 
 my $usage = qq{
-Usage: nii2dt.sh <bvals> <bvecs> <template> <template_mask> <output_dir> <output_file_root> <dwi_1> [dwi_2] ... [dwi_N]
-
+Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvasl2 --bvecs bvecs1 bvecs2 --mask mask --outrooot outroot --outdir outdir
 
   <bvals> - use specified b-values instead of those defined in the DICOM files
 
@@ -33,43 +33,44 @@ use FindBin qw($Bin);
 use File::Path;
 use File::Spec;
 use File::Basename;
+use Getopt::Long;
 
+my @dwiImages = ();
+my @bvals = ();
+my @bvecs = ();
+my @scheme = ();
+my $outputFileRoot = "";
+my $outputDir = "";
+my $verbose = 0;
+
+my @exts = (".bval", ".bvec", ".nii", ".nii.gz", ".scheme" );
+
+GetOptions ("dwi=s{1,1000}" => \@dwiImages,    # string
+	    "bvals=s{1,1000}" => \@bvals, 
+	    "bvecs=s{1,1000}" => \@bvecs,
+	    "scheme=s{1,1000}" => \@scheme,
+	    "outdir=s" => \$outputDir,
+	    "outroot=s" => \$outputFileRoot,
+	    "verbose"  => \$verbose)   # flag
+    or die("Error in command line arguments\n");
+
+if ( $verbose ) {
+    print( "DWI:\n @dwiImages \n");
+    print( "BVALS:\n @bvals \n");
+    print( "BVECS:\n @bvecs \n");
+    print( "SCHEME:\n @scheme\n");
+    print("OUTROOT: $outputFileRoot \n");
+    print("OUTDIR: $outputDir \n");
+}
 
 # Set to 1 to delete intermediate files after we're done
 # Has no effect if using qsub since files get cleaned up anyhow
-my $cleanup=0;
-
-# Output directory
-my $outputDir = "";
-
-# Output file root
-my $outputFileRoot = "";
+my $cleanup=1;
 
 # Get the directories containing programs we need
 my ($antsDir, $caminoDir, $tmpDir) = @ENV{'ANTSPATH', 'CAMINOPATH', 'TMPDIR'};
 
-# File names of bvals and bvecs to use if we can't rely on those derived from the data
-my $bvals = "";
-my $bvecs = "";
-
-# Templates
-my $dwiTemplate = "";
-my $dwiTemplateMask = "";
-
-my @dwiImages = ();
-
 # Process command line args
-
-if (!($#ARGV + 1)) {
-    print "$usage\n";
-    exit 0;
-}
-else { 
-    
-    ($bvals, $bvecs, $dwiTemplate, $dwiTemplateMask, $outputDir, $outputFileRoot, @dwiImages) = @ARGV;
-
-}
-
 if ( ! -d $outputDir ) { 
   mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
 }
@@ -78,11 +79,42 @@ if ( ! -d $outputDir ) {
 # Use SGE_TMP_DIR if possible to avoid hammering NFS
 if ( !($tmpDir && -d $tmpDir) ) {
     $tmpDir = $outputDir . "/${outputFileRoot}dtiproc";
-
+    
     mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Cannot create working directory $tmpDir\n\t";
 
     print "Placing working files in directory: $tmpDir\n";
 }
+
+
+# FIXME - warnings/error related to command line ops
+my $numScans = scalar(@dwiImages);
+print "\nProcessing " . $numScans . " scans.\n";
+
+if ( scalar(@scheme) == 0) {
+    if ( !scalar(@bvals) || !scalar(@bvecs) ) {
+	die( "Missing bvecs or bvals, cannot proceed with DT reconstruction");
+    }
+    if ( scalar(@bvals) != scalar(@bvecs) ) {
+	die( "Inconsistant number of bvecs and bvals, cannot proceed with DT reconstruction");
+    }
+    
+    if ( (scalar(@bvals) != scalar(@dwiImages)) &&
+	 (scalar(@bvals) != 1) ) {
+	die( "Number of bvals files must be same as dwi-images or 1");
+    }
+    
+    if ( (scalar(@bvecs) != scalar(@dwiImages)) &&
+	 (scalar(@bvecs) != 1) ) {
+	die( "Number of bvecs files must be same as dwi-images or 1");
+    }
+}
+else {
+    if ( (scalar(@scheme) != scalar(@dwiImages)) &&
+	 (scalar(@scheme) != 1) ) {
+	die( "Number of scheme files must be same as dwi-images or 1");
+    } 
+}
+     
 
 # done with args
 
@@ -100,191 +132,72 @@ my $outputBrainMask = "${outputDir}/${outputFileRoot}brainmask.nii.gz";
 
 my $outputAverageDWI = "${outputDir}/${outputFileRoot}averagedwi.nii.gz";
 
+my $outputDWI = "${outputDir}/${outputFileRoot}dwi.nii.gz";
+
 # ---OUTPUT FILES AND DIRECTORIES---
 
 
-print "\nProcessing " . scalar(@dwiImages) . " scans.\n";
-
-
-my $numScans = scalar(@dwiImages);
-
-print "Using bvecs $bvecs\n";
-print "Using bvals $bvals\n";
-
-if ( ! (-e $bvecs && -e $bvals) ) {
-    die "Missing bvec or bval, cannot proceed with DT reconstruction";
-} 
 
 # -bscale 1 produces b values in 2 / mm ^2 on Siemens scanners. Adjust to taste
-system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvals -bvecs $bvecs -numscans $numScans -interleave > $outputSchemeFile");
-
-
-for (my $counter = 0; $counter < $numScans; $counter++) {
-
-    my $scanCounter = formatScanCounter($counter + 1);
-
-    system("${caminoDir}/split4dnii -inputfile $dwiImages[$counter] -outputroot ${tmpDir}/${outputFileRoot}S${scanCounter}_");
-}
-
-
-
-# Use bvals to determine indices of a reference b=0 volume and other b=0 volumes
-# We use bvals and not the scheme file, because the scheme file includes repeats
-open(FILE, "<$bvals") or die $!;
-
-
-# Array contains b-values for each measurement
-my @bvalues = split('\s+', <FILE>);
-
-close(FILE);
-
-# Complete path to all images with b=0
-my @zeroImages= (); 
-
-# Complete path to all images with b > 0
-my @dwImages= (); 
-
-# Image list contains all corrected image file names. 
-# This file is for image2voxel and contains no path information, just file names
-my @imageList = ();
-
-# File name to which we write this
-my $imageListFile = "${tmpDir}/imagelist.txt";
-
-# Loop over b-values. If b=0, add the corresponding 3D volume from all scans to
-# the list of b=0 scans, else add to list of DW scans
-foreach my $i (0 .. $#bvalues) {
-    foreach my $s (0 .. ($numScans - 1)) {
-	# no path information because we want the image list to remain valid after we move the images
-	my $imageFilename = ${outputFileRoot} . "S" . formatScanCounter($s + 1) . "_" . sprintf("%04d", ($i+1)) . ".nii.gz";
-
-	my $pathToImage = "${tmpDir}/$imageFilename";
-	
-	if ($bvalues[$i] == 0) {
-	    push(@zeroImages, $pathToImage);
-	}
-	else {
-	    push(@dwImages, $pathToImage);
-	}
-
-	my $correctedFileName = $imageFilename;
-
-	# Assuming name of corrected file here, better to get it from function call
-	$correctedFileName =~ s/\.nii\.gz$/_corrected\.nii\.gz/;
-
-	push(@imageList, $correctedFileName);
+my $nBFiles = scalar(@bvals);
+if ( scalar(@scheme) == 0 ) {
+    for (my $i = 0; $i < $nBFiles; $i += 1) {
+	my $bname = basename($bvals[$i], @exts);
+	my $sname = "${outputDir}/${bname}.scheme";
+	push(@scheme, $sname);
+	print "$sname\n";
+	my $bval = $bvals[$i];
+	my $bvec = $bvecs[$i];
+	system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bval -bvecs $bvec > $sname");
     }
-} 
-
-# Write image list to disk. This is a list of corrected 3D volumes
-# in the order in which they appear in the scheme file
-open(FILE, ">$imageListFile") or die $!;
-
-foreach my $imageListEntry (@imageList) {
-    print FILE "$imageListEntry\n";
 }
 
-close FILE;
-
-
-print "\nFound " . scalar(@zeroImages) . " b=0 scans\n";
-
-# In theory there could be no b=0 images, but we don't deal with that for now
-if (scalar(@zeroImages) == 0) { 
-    print "\nDid not find any b=0 images. Unable to continue\n";
-    exit 1;
+# If using repeats of same scheme 
+if ( (scalar(@scheme)==1) && (scalar(@dwiImages) > 1) ) {
+    print("Assuming repeats of same acquisition scheme\n");
+    for ( my $i=1; $i < scalar(@dwiImages); $i += 1) {
+	push(@scheme, $scheme[0]);
+    }
 }
 
-# $referenceB0 contains an absolute path
-my $referenceB0 = shift(@zeroImages);
+my $masterScheme = "${outputDir}/${outputFileRoot}master.scheme";
+system("cat $scheme[0] | grep -v \"^\$\" > $masterScheme");
 
-print "\nUsing $referenceB0 as reference volume\n";
-
-# Write null transform and feed reference image to ANTS
-# This ensures a consistent header / data type for all output images 
-open (FILE, ">${tmpDir}/nullTransform.txt") or die $!;
-
-my $nullTrans = qq/
-#Insight Transform File V1.0
-# Transform 0
-Transform: MatrixOffsetTransformBase_double_3_3
-Parameters: 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0
-FixedParameters: 0.0 0.0 0.0
-/;
-
-print FILE $nullTrans;
-
-close FILE;
-
-my $referenceB0Correct = $referenceB0;
-
-$referenceB0Correct =~ s/\.nii\.gz$/_corrected\.nii\.gz/;
-
-`$antsDir/WarpImageMultiTransform 3 $referenceB0 $referenceB0Correct -R $referenceB0 ${tmpDir}/nullTransform.txt`;
-
-# Corrected b=0 images
-my @zeroImagesCorrect;
-
-my $averageB0 = "${tmpDir}/b0_mean.nii.gz";
-
-if (scalar(@zeroImages) == 0) {
-
-    # just one b=0 image.
-    `cp $referenceB0Correct $averageB0`;
-
-    unshift(@zeroImagesCorrect, $referenceB0Correct);
+if ( scalar(@scheme) > 1 ) {
+    for ( my $i = 1; $i < scalar(@scheme); $i += 1 ) {
+	system( "cat $scheme[$i] | grep -v \"^\$\" | grep -v \"VERSION\" |  grep -v \"#\" >> $masterScheme");
+   }
 }
-else {
-
-    # Register all b=0 volumes to reference
-    @zeroImagesCorrect = motionCorrect($referenceB0, @zeroImages);
-
-    unshift(@zeroImagesCorrect, $referenceB0Correct);
-
-    # Average registered b=0 volumes
-    averageImages($averageB0, @zeroImagesCorrect);
-    
+system("cp $dwiImages[0] $outputDWI");
+if ( scalar(@dwiImages) > 1 ) {
+    print( "Merging acquistions for motion correction \n");
+    for ( my $i = 1; $i < scalar(@dwiImages); $i += 1) {
+	system("${antsDir}/ImageMath 4 $outputDWI stack $outputDWI $dwiImages[$i]");
+    }
 }
 
-print "b=0 images corrected. Correcting " . scalar(@dwImages) . " DW images\n";
-
-# Register all b > 0 volumes to b0_mean
-my @dwiImagesCorrect = motionCorrect($averageB0, @dwImages);
-
-# Make output directory for DWI images (and the rest if necessary)
-system("mkdir -p ${outputDWI_Dir}");
-
-# Make average DWI image
-averageImages($outputAverageDWI, @dwiImagesCorrect);
+my $ref = "${outputDir}/${outputFileRoot}ref.nii.gz";
+system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
+system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
 
 # Mask brain - FIXME
-maskBrain($outputAverageDWI, $outputBrainMask, $dwiTemplate, $dwiTemplateMask);
+#maskBrain($outputAverageDWI, $outputBrainMask, $dwiTemplate, $dwiTemplateMask);
 
 # Now ready to do reconstruction
 # Don't pipe because of cluster memory restrictions
+print( "Begin DT reconstruction\n");
+system("${caminoDir}/image2voxel -4dimage $outputDWI > ${tmpDir}/vo.Bfloat"); 
 
-system("${caminoDir}/image2voxel -imageprefix ${tmpDir}/ -imagelist $imageListFile > ${tmpDir}/vo.Bfloat"); 
+system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $masterScheme ${tmpDir}/sigmaSq.img -outputdatatype float > ${tmpDir}/dt.Bfloat");
 
-system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $outputSchemeFile ${tmpDir}/sigmaSq.img -outputdatatype float -bgmask $outputBrainMask > ${tmpDir}/dt.Bfloat");
+system("cat ${tmpDir}/sigmaSq.img | voxel2image -inputdatatype double -header $ref -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
 
-system("cat ${tmpDir}/sigmaSq.img | voxel2image -inputdatatype double -header $referenceB0Correct -outputroot ${outputDir}/${outputFileRoot}sigmaSq.nii.gz");
-
-system("${caminoDir}/dt2nii -header $referenceB0Correct -outputroot ${outputDir}/${outputFileRoot} -inputfile ${tmpDir}/dt.Bfloat -inputdatatype float -outputdatatype float -gzip");
-
-system("mv ${tmpDir}/*correctedAffine.txt ${outputDWI_Dir}");
-
-system("mv $imageListFile $outputImageListFile");
-
-`mv $outputSchemeFile ${outputDir}/`;
-
-# image list entries contain no path information
-foreach my $imageListEntry (@imageList) {
-    `mv ${tmpDir}/$imageListEntry $outputDWI_Dir`;
-}
+system("${caminoDir}/dt2nii -header $ref -outputroot ${outputDir}/${outputFileRoot} -inputfile ${tmpDir}/dt.Bfloat -inputdatatype float -outputdatatype float -gzip");
 
 # Add images for QC
 system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}fa.nii.gz TensorFA ${outputDir}/${outputFileRoot}dt.nii.gz");
 system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}md.nii.gz TensorMeanDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
+system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rd.nii.gz TensorRadialDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
 system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColor ${outputDir}/${outputFileRoot}dt.nii.gz");
 
 
@@ -292,85 +205,6 @@ system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColo
 if ($cleanup) { 
     `rm -rf $tmpDir`;
 }
-
-
-
-# formatScanCounter($counter)
-#
-# Formats the scan counter such that qq("S_" formatScanCounter($counter)) gives the root
-# of the DWI images that have been produced by this script.
-sub formatScanCounter {
-    
-    my $scanCounter = shift; # first argument
-
-    return sprintf("%03d", $scanCounter);
-}
-
-
-# Normalizes all images to the reference volume
-#
-# @corrected = motionCorrect($fixedImage, @movingImages);
-#
-# Returns array of corrected images. If the moving image is ${movingRoot}.nii.[gz], then
-# the corrected image is ${moving}_corrected.nii.gz. Eg S001_0001.nii.gz -> S001_0001_corrected.nii.gz
-# 
-# Affine transformations are written to ${movingRoot}_correctedAffine.txt
-#
-sub motionCorrect {
-
-
-    my ($fixed, @moving) = @_;
-
-    # corrected image names
-    my @corrected = ();
-
-    foreach my $image (@moving) {
-
-	$image =~ m/(.*)(\.nii)(\.gz)?$/;
-
-	my $imageRoot = $1;
-
-	my $ext = "nii.gz";
-
-	my $out="${imageRoot}_corrected.$ext";
-
-        my $DEFORMABLEITERATIONS=0;    # for affine only 
-        #my $DEFORMABLEITERATIONS="1x0x0";  # for a little fun with deformation 
-
-	my $cmd = "$antsDir/ANTS 3 -m MI[${fixed},${image},1,16] -t SyN[1] -r Gauss[3,1] -o $out -i $DEFORMABLEITERATIONS";
-
-	print "\n  $cmd \n";
-
-	system($cmd);
- 
-        system("$antsDir/WarpImageMultiTransform 3 $image $out -R $fixed  ${imageRoot}_correctedAffine.txt"); 
-
-	print "Corrected image $out written\n";
-
-	push(@corrected, $out);
-
-    }
-
-    return @corrected;
-
-}
-
-
-# Averages images
-#
-# averageImages($average, @imagesToAverage) 
-#
-# Arguments should both include full path to images
-#
-sub averageImages {
-
-    my ($average, @imagesToAverage) = @_;
-
-    # use ants
-    system("${antsDir}/AverageImages 3 $average 0 @imagesToAverage");
-
-} 
-
 
 
 # Computes brain mask from the average DWI image 

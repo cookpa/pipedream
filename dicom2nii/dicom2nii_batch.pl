@@ -9,7 +9,7 @@ use File::Spec;
 use FindBin qw($Bin);
 
 my $usage = qq{
-  Usage: dicom2nii <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> 
+  Usage: dicom2nii <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> <output_sub_dir>
 
       <queue_type> - type of queue to submit jobs. Either "sge", "voxbo", or "none"
 
@@ -31,7 +31,9 @@ my $usage = qq{
 
       <output_dir> - output base directory. Output is placed into
 
-	  output_dir/subject/timepoint/rawNii
+      <output_sub_dir> - output directory within timepoint
+
+	  output_dir/subject/timepoint/output_sub_dir/
 
   };
 
@@ -40,14 +42,14 @@ if (!($#ARGV + 1)) {
     print "$usage\n";
     exit 0;
 }
-elsif ($#ARGV < 4) {
+elsif ($#ARGV < 5) {
     die "ERROR: Missing arguments, run without args to see usage\n\t";
 }
 
 
 my ($qsub, $vbbatch) = @ENV{'PIPEDREAMQSUB', 'PIPEDREAMVBBATCH'};
 
-my ($queueType, $subjectList, $protocolList, $inputBaseDir, $outputBaseDir) = @ARGV;
+my ($queueType, $subjectList, $protocolList, $inputBaseDir, $outputBaseDir, $outputSubDir) = @ARGV;
 
 my $useVoxbo = 0;
 my $useSGE = 0;
@@ -139,7 +141,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
 
     my @dirContents = `ls ${inputBaseDir}/${subject}/${timePoint}`;
 
-    my $tpOutputDir = "${outputBaseDir}/${subject}/${timePoint}/rawNii";
+    my $tpOutputDir = "${outputBaseDir}/${subject}/${timePoint}/${outputSubDir}";
 
     if ( -d "$tpOutputDir" ) {
       print "Output directory $tpOutputDir already exists. Skipping this time point\n";
