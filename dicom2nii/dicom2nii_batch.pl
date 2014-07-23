@@ -9,7 +9,7 @@ use File::Spec;
 use FindBin qw($Bin);
 
 my $usage = qq{
-  Usage: dicom2nii <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> <output_sub_dir>
+  Usage: dicom2nii <queue_type> <subject_list> <protocol_list> <data_dir> <output_dir> [output_sub_dir=rawNii]
 
       <queue_type> - type of queue to submit jobs. Either "sge", "voxbo", or "none"
 
@@ -42,7 +42,7 @@ if (!($#ARGV + 1)) {
     print "$usage\n";
     exit 0;
 }
-elsif ($#ARGV < 5) {
+elsif ($#ARGV < 4) {
     die "ERROR: Missing arguments, run without args to see usage\n\t";
 }
 
@@ -50,6 +50,10 @@ elsif ($#ARGV < 5) {
 my ($qsub, $vbbatch) = @ENV{'PIPEDREAMQSUB', 'PIPEDREAMVBBATCH'};
 
 my ($queueType, $subjectList, $protocolList, $inputBaseDir, $outputBaseDir, $outputSubDir) = @ARGV;
+
+if (!$outputSubDir) {
+  $outputSubDir = "rawNii";
+}
 
 my $useVoxbo = 0;
 my $useSGE = 0;

@@ -85,14 +85,16 @@ while (<PROTOFILE>) {
 
 close PROTOFILE;
 
+my @dirContents = `ls ${inputBaseDir}/${subject}/${timepoint}`;
+
 PROTOCOL: foreach my $protocolName (@protocols) {
 
-
-  my @dirContents = `ls ${inputBaseDir}/${subject}/${timepoint}`;
+  my $foundProtocol = 0;
 
   foreach my $subdir (@dirContents) {
-    print( "  - $subdir\n");
     if ( $subdir =~ m|^([0-9]+_${protocolName})/?$|m) {
+
+      $foundProtocol = 1;
 
       my $seriesName = $1;
       
@@ -162,11 +164,19 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
   }
 
+  if (!$foundProtocol) {
+    print "No match for $protocolName\n"; 
+  }
+
 }
 
 sub trim {
 
     my ($string) = @_;
+
+    if (!$string) {
+      return $string;
+    }
 
     $string =~ s/^\s+//;    
     $string =~ s/\s+$//;
