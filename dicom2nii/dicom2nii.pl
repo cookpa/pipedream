@@ -128,8 +128,14 @@ PROTOCOL: foreach my $protocolName (@protocols) {
       # run dcm2nii - will output to $tmpDir
       my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b ${Bin}/../config/dcm2nii.ini -r n -a n -d n -e y -f y -g n -i n -n y -p y $tmpDir`;
 
-      $dcm2niiOutput =~ m/->(.*\.nii)/;
-      my $niftiDataFile = $1;
+      my @niftiFiles = $dcm2niiOutput =~ m/->(.*\.nii)/g;
+
+      if (scalar(@niftiFiles) > 1) {
+          print "\nWARNING: Cannot process this series because multiple nii files were produced: @niftiFiles \n";
+          next PROTOCOL;
+      }
+
+      my $niftiDataFile = $niftiFiles[0];
 
       # Look for warnings in the dicom conversion
       if ($dcm2niiOutput =~ m/Warning:/ || $dcm2niiOutput =~ m/Error/) {
@@ -137,7 +143,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
     
           print "\n${dcm2niiOutput}\n\n";
     
-          exit 1;
+          next PROTOCOL;
       }
 
       `mv ${tmpDir}/$niftiDataFile ${outputDir}/${outputFileRoot}.nii`;

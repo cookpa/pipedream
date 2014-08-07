@@ -151,8 +151,11 @@ foreach my $subjectCounter (0 .. $#subjects) {
       print "Output directory $tpOutputDir already exists. Skipping this time point\n";
       next TIMEPOINT;
     }
+
+    # On clusters, simultaneous attempts to run dcm2nii can fail. We try to avoid this with a random sleep on each job
+    my $delay = ($useVoxbo || $useSGE);
       
-    my $cmd = "${Bin}/dicom2nii_q_subj.sh ${Bin} ${inputBaseDir} ${subject} ${timePoint} ${protocolList} ${tpOutputDir} $ENV{'HOME'}";
+    my $cmd = "${Bin}/dicom2nii_q_subj.sh ${Bin} ${inputBaseDir} ${subject} ${timePoint} ${protocolList} ${tpOutputDir} $ENV{'HOME'} $delay";
 
     my $job = $cmd;
  
