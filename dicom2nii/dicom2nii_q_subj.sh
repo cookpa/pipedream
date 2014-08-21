@@ -18,7 +18,9 @@ echo "Running on $HOSTNAME"
 
 if [[ $DELAY -gt 0 ]]; then
 
-  delay="$((RANDOM%31)).${RANDOM}"
+  RANDOM=$JOB_ID
+
+  delay="$((RANDOM%23)).$((RANDOM%10000))"
 
   echo "sleeping for $delay s to avoid file write collisions that crash dcm2nii"
 

@@ -165,7 +165,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
     elsif ($useSGE) {
       $job = "$qsub -S /bin/bash $cmd";
       # sleep to avoid qsub issues
-      `sleep 2`;
+      `sleep 0.5`;
     }
     
     system($job);
