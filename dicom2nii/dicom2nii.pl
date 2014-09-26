@@ -4,7 +4,7 @@
 #
 
 my $usage = qq{
-dicom2nii.sh converts dicom series to NIFTI images, doesn't do any addition preprocessing
+dicom2nii.sh converts dicom series to NIFTI images, doesn't do any additional preprocessing
 
 Usage: dicom2nii.sh <input_base_dir> <subject> <timepoint> <protocol_list> <outputDir>
 
@@ -42,8 +42,7 @@ my $protocolFile = "";
 # # Output directory
 my $outputDir = "";
 
-
-my ($antsDir, $dcm2niiDir) = @ENV{'ANTSPATH', 'DCM2NIIPATH'};
+my ($antsDir, $dcm2niiDir, $tmpBaseDir) = @ENV{'ANTSPATH', 'DCM2NIIPATH', 'TMPDIR'};
 
 #Process command line args
 if (($#ARGV != 4)) {
@@ -91,20 +90,36 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
   my $foundProtocol = 0;
 
-  foreach my $subdir (@dirContents) {
-    if ( $subdir =~ m|^([0-9]+_${protocolName})/?$|m) {
+  SUBDIR: foreach my $subdir (@dirContents) {
+
+    chomp $subdir;
+
+    if ( -d "${inputBaseDir}/${subject}/${timepoint}/${subdir}" && $subdir =~ m|^([0-9]+_${protocolName})/?$|m) {
 
       $foundProtocol = 1;
 
+      # Includes number
       my $seriesName = $1;
       
-      print "Transfering DICOM files for scan ${seriesName}\n";
-
       my $outputFileRoot = "${subject}_${timepoint}_${seriesName}";
+ 
+      if ( -f "${outputDir}/${outputFileRoot}.nii.gz") {
+        print "Output file ${outputDir}/${outputFileRoot}.nii.gz exists already; skipping this series\n";
+        next SUBDIR; # Next subdir, might be others matching this protocol
+      }
 
+      print "Transfering DICOM files for scan ${seriesName}\n";
+     
       my $seriesDir = "${inputBaseDir}/${subject}/${timepoint}/${seriesName}";
 
       my $tmpDir = "${outputDir}/${outputFileRoot}tmp";
+
+      # if (-d "$tmpBaseDir") {
+        # DEBUG - don't use system dir until we've solved some issues
+        # tmpDir inside the output dir make it easier to find when jobs die for no apparent reason on the cluster
+
+        # $tmpDir = "${tmpBaseDir}/${outputFileRoot}tmp";
+      # }
 
       mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Can't make working directory $tmpDir\n\t";
 
