@@ -5,11 +5,11 @@
 #
 
 my $usage = qq{
-Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvasl2 --bvecs bvecs1 bvecs2 --mask mask --outrooot outroot --outdir outdir
+Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --mask mask --outroot outroot --outdir outdir
 
-  <bvals> - use specified b-values instead of those defined in the DICOM files
+  <bvals> - use specified b-values 
 
-  <bvecs> - use specified b-vectors instead of those defined in the DICOM files
+  <bvecs> - use specified b-vectors 
 
   <template> - template to match to the average DWI image
 
@@ -136,21 +136,43 @@ my $outputDWI = "${outputDir}/${outputFileRoot}dwi.nii.gz";
 
 # ---OUTPUT FILES AND DIRECTORIES---
 
-
+my $bvalMaster = "${outputDir}/${outputFileRoot}master.bval";
+my $bvecMaster = "${outputDir}/${outputFileRoot}master.bvec";
+if ( scalar(@bvals) > 0 ) {
+  
+  if ( scalar(@bvals) > 1 ) {
+    my $bvalString = join(" ", @bvals);
+    system("paste $bvalString > $bvalMaster");
+    }
+  else {
+    system("cp $bvals[0] $bvalMaster");
+    }
+  }
+if ( scalar(@bvecs) > 0 ) {
+  
+  if ( scalar(@bvecs) > 1 ) {
+    my $bvecString = join(" ", @bvecs);
+    system("paste $bvecString > $bvecMaster");
+    }
+  else {
+    system("cp $bvecs[0] $bvecMaster");
+    }
+  }
+  
 
 # -bscale 1 produces b values in 2 / mm ^2 on Siemens scanners. Adjust to taste
 my $nBFiles = scalar(@bvals);
 if ( scalar(@scheme) == 0 ) {
-    for (my $i = 0; $i < $nBFiles; $i += 1) {
-	my $bname = basename($bvals[$i], @exts);
-	my $sname = "${outputDir}/${bname}.scheme";
-	push(@scheme, $sname);
-	print "$sname\n";
-	my $bval = $bvals[$i];
-	my $bvec = $bvecs[$i];
-	system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bval -bvecs $bvec > $sname");
-    }
-}
+  for (my $i = 0; $i < $nBFiles; $i += 1) {
+	  my $bname = basename($bvals[$i], @exts);
+	  my $sname = "${outputDir}/${bname}.scheme";
+	  push(@scheme, $sname);
+	  print "$sname\n";
+	  my $bval = $bvals[$i];
+	  my $bvec = $bvecs[$i];
+	  system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bval -bvecs $bvec > $sname");
+    }  
+  }
 
 # If using repeats of same scheme 
 if ( (scalar(@scheme)==1) && (scalar(@dwiImages) > 1) ) {
@@ -178,20 +200,29 @@ if ( scalar(@dwiImages) > 1 ) {
 
 my $ref = "${outputDir}/${outputFileRoot}ref.nii.gz";
 system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
-system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
+system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -u 1 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
 
-# Mask brain - FIXME
-#maskBrain($outputAverageDWI, $outputBrainMask, $dwiTemplate, $dwiTemplateMask);
+
+
+# Correct directions via motion correction parameters
+my $correctedScheme = "${outputDir}/${outputFileRoot}corrected.scheme";
+my $bvecCorrected = "${outputDir}/${outputFileRoot}corrected.bvec";
+system("${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv");
+
+system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrected > $correctedScheme");
 
 # Now ready to do reconstruction
 # Don't pipe because of cluster memory restrictions
 print( "Begin DT reconstruction\n");
 system("${caminoDir}/image2voxel -4dimage $outputDWI > ${tmpDir}/vo.Bfloat"); 
 
-system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $masterScheme ${tmpDir}/sigmaSq.img -outputdatatype float > ${tmpDir}/dt.Bfloat");
+print("wdtfit\n");
+system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $correctedScheme ${tmpDir}/sigmaSq.img -outputdatatype float > ${tmpDir}/dt.Bfloat");
 
-system("cat ${tmpDir}/sigmaSq.img | voxel2image -inputdatatype double -header $ref -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
+print("sigma img\n");
+system("cat ${tmpDir}/sigmaSq.img | voxel2image -inputdatatype float -header $ref -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
 
+print("dt2nii\n");
 system("${caminoDir}/dt2nii -header $ref -outputroot ${outputDir}/${outputFileRoot} -inputfile ${tmpDir}/dt.Bfloat -inputdatatype float -outputdatatype float -gzip");
 
 # Add images for QC
@@ -207,73 +238,6 @@ if ($cleanup) {
 }
 
 
-# Computes brain mask from the average DWI image 
-#
-#
-# maskBrain($dwiMean, $maskFile, $template, $templateMask) 
-#
-#
-sub maskBrain {
-
-    my ($dwiMean, $maskFile, $template, $templateMask) = @_;
-      
-
-    if ( -f $template) {
-
-	my $inputTrunc = "${tmpDir}/averagedwi_truncated.nii.gz";
-	
-	system("${antsDir}/ImageMath 3 $inputTrunc TruncateImageIntensity $dwiMean 0.0 0.99");
-
-        # Use CC for affine metric type - better behaved
-	system("${antsDir}/ANTS 3 -m MI[${template},${inputTrunc},1,32] -o ${tmpDir}/subj2templateAffine.nii.gz -i 0 --number-of-affine-iterations 10000x10000 --affine-metric-type CC --use-Histogram-Matching true");
-	
-        # Dilate template mask to include boundary of brain - going to use this to mask registration
-	my $templateMaskDilated = "${tmpDir}/templateMaskDilated.nii.gz";
-
-	system("${antsDir}/ImageMath 3 $templateMaskDilated MD $templateMask 2");
-
-	# Now use MI in the masked space to refine the affine, but only at full resolution - avoids weird instability
-	system("${antsDir}/ANTS 3 -m CC[${template},${inputTrunc},1,3] -o ${tmpDir}/averagedwi2template.nii.gz -i 40x40 -t Syn[0.2] -r Gauss[3,0] --continue-affine true --initial-affine ${tmpDir}/subj2templateAffineAffine.txt --number-of-affine-iterations 10000 --affine-metric-type MI -x $templateMaskDilated");
-
-	# Warp the template mask to the subject space
-	system("${antsDir}/WarpImageMultiTransform 3 $templateMask $maskFile -R ${dwiMean} -i ${tmpDir}/averagedwi2templateAffine.txt ${tmpDir}/averagedwi2templateInverseWarp.nii.gz");
-
-	system("${antsDir}/ThresholdImage 3 $maskFile $maskFile 0.5 Inf");
-
-	# N4
-	my $dwiMeanN4 = "${tmpDir}/averagedwi_n4.nii.gz";
-
-	my $ITS = 20;
-
-	system("${antsDir}/N4BiasFieldCorrection -d 3 -h 0 -i $inputTrunc -o $dwiMeanN4 -s 2 -b [200] -c [${ITS}x${ITS}x${ITS},0.00001] -x $maskFile");
-
-
-	system("${antsDir}/ANTS 3 -m CC[${template},${dwiMeanN4},1,3] -o ${tmpDir}/averagedwi2template.nii.gz -i 40x40 -t Syn[0.2] -r Gauss[3,0] --use-Histogram-Matching  --continue-affine true --initial-affine ${tmpDir}/averagedwi2templateAffine.txt --number-of-affine-iterations 10000 --affine-metric-type MI -x $templateMaskDilated");
-
-
-	system("${antsDir}/WarpImageMultiTransform 3 $templateMask $maskFile -R ${dwiMean} -i ${tmpDir}/averagedwi2templateAffine.txt ${tmpDir}/averagedwi2templateInverseWarp.nii.gz");
-
-        # Threshold and close holes
-
-	system("${antsDir}/ThresholdImage 3 $maskFile $maskFile 0.5 Inf");
-	system("${antsDir}/ImageMath 3 $maskFile PadImage $maskFile 10");
-	system("${antsDir}/ImageMath 3 $maskFile MD $maskFile 2");
-	system("${antsDir}/ImageMath 3 $maskFile ME $maskFile 2");
-	system("${antsDir}/ImageMath 3 $maskFile PadImage $maskFile -10");
-
-
-    }
-    else {
-	
-	# No template. Could do something with Atropos here?
-
-	system("${antsDir}/ThresholdImage 3 $dwiMean $maskFile 0 Inf");
-	
-    }
-    
-    return $maskFile;
-
-}
 
 
 

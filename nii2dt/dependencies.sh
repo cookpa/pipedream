@@ -15,8 +15,9 @@ if [[ `cat /tmp/dicom2dt.$RAN | grep HotSpot` == "" ]]; then
     `java -version > /dev/null 2> /tmp/dicom2dt.$RAN`
     
     if [[ `cat /tmp/dicom2dt.$RAN | grep HotSpot` == "" ]]; then
-	echo "Cannot find Sun java executable"
-	return 1
+	    echo "Cannot find Sun java executable"
+	    echo "On cluster, you often need 3 slots or this will fail"
+	    return 1
     fi
 
     echo "Cannot find Sun Java at Pipedream default path $JAVAPATH"
