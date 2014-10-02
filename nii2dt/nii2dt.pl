@@ -199,15 +199,22 @@ if ( scalar(@dwiImages) > 1 ) {
 }
 
 my $ref = "${outputDir}/${outputFileRoot}ref.nii.gz";
-system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
-system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -u 1 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
-
+if ( ! -e "$outputDWI" ) {
+  system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
+  system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -u 1 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
+  }
+else {
+  print( "Motion correction already exists\n");
+}
 
 
 # Correct directions via motion correction parameters
+print( "Correcting directions stored in $bvecMaster\n" );
 my $correctedScheme = "${outputDir}/${outputFileRoot}corrected.scheme";
 my $bvecCorrected = "${outputDir}/${outputFileRoot}corrected.bvec";
-system("${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv");
+my $correctDirections = "${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv --physical ${ref}";
+print( "$correctDirections\n");
+system($correctDirections);
 
 system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrected > $correctedScheme");
 
