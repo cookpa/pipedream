@@ -199,7 +199,7 @@ if ( scalar(@dwiImages) > 1 ) {
 }
 
 my $ref = "${outputDir}/${outputFileRoot}ref.nii.gz";
-if ( ! -e "$outputDWI" ) {
+if ( ! -e "$ref" ) {
   system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
   system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -u 1 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
   }
