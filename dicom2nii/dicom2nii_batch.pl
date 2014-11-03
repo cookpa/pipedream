@@ -148,8 +148,12 @@ foreach my $subjectCounter (0 .. $#subjects) {
     my $tpOutputDir = "${outputBaseDir}/${subject}/${timePoint}/${outputSubDir}";
 
     # On clusters, simultaneous attempts to run dcm2nii can fail. We try to avoid this with a random sleep on each job
-    my $delay = ($useVoxbo || $useSGE);
-      
+    #    my $delay = ($useVoxbo || $useSGE);
+    # 
+    # Possible we can avoid this by having each job make its own copy of the ini file. Disable delay for now
+    #
+    my $delay = 0;
+  
     my $cmd = "${Bin}/dicom2nii_q_subj.sh ${Bin} ${inputBaseDir} ${subject} ${timePoint} ${protocolList} ${tpOutputDir} $ENV{'HOME'} $delay";
 
     my $job = $cmd;

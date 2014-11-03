@@ -114,12 +114,9 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
       my $tmpDir = "${outputDir}/${outputFileRoot}tmp";
 
-      # if (-d "$tmpBaseDir") {
-        # DEBUG - don't use system dir until we've solved some issues
-        # tmpDir inside the output dir make it easier to find when jobs die for no apparent reason on the cluster
-
-        # $tmpDir = "${tmpBaseDir}/${outputFileRoot}tmp";
-      # }
+      if (-d "$tmpBaseDir") {
+        $tmpDir = "${tmpBaseDir}/${outputFileRoot}tmp";
+      }
 
       mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Can't make working directory $tmpDir\n\t";
 
@@ -141,7 +138,12 @@ PROTOCOL: foreach my $protocolName (@protocols) {
       }
     
       # run dcm2nii - will output to $tmpDir
-      my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b ${Bin}/../config/dcm2nii.ini -r n -a n -d n -e y -f y -g n -i n -n y -p y $tmpDir`;
+      
+      my $tmpIni = "${tmpDir}/dcm2nii.ini";
+
+      `cp ${Bin}/../config/dcm2nii.ini $tmpIni`;
+
+      my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b $tmpIni -r n -a n -d n -e y -f y -g n -i n -n y -p y $tmpDir`;
 
       my @niftiFiles = $dcm2niiOutput =~ m/->(.*\.nii)/g;
 
@@ -154,10 +156,16 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
       # Look for warnings in the dicom conversion
       if ($dcm2niiOutput =~ m/Warning:/ || $dcm2niiOutput =~ m/Error/) {
-          print "\nDICOM conversion failed. dcm2nii output follows\n";
-    
+          print "\nDICOM conversion failed or there were warnings. dcm2nii output follows\n";
+
           print "\n${dcm2niiOutput}\n\n";
     
+          open FILE, ">${outputDir}/${outputFileRoot}_dcm2niiErrorsAndWarnings.txt";
+
+          print FILE "${dcm2niiOutput}\n";
+
+          close FILE;
+
           next PROTOCOL;
       }
 
