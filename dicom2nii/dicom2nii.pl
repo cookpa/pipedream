@@ -114,7 +114,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
       my $tmpDir = "${outputDir}/${outputFileRoot}tmp";
 
-      if (-d "$tmpBaseDir") {
+      if ($tmpBaseDir && -d "$tmpBaseDir") {
         $tmpDir = "${tmpBaseDir}/${outputFileRoot}tmp";
       }
 

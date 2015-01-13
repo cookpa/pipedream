@@ -8,11 +8,11 @@ source ${0%/*}/../config/pipedream_config.sh
 
 
 # Sun Java stupidly prints version info on stderr
-`${JAVAPATH}/java -version > /dev/null 2> /tmp/dicom2dt.$RAN`
+`${JAVAPATH}/java -Xmx100M -version > /dev/null 2> /tmp/dicom2dt.$RAN`
 
 if [[ `cat /tmp/dicom2dt.$RAN | grep HotSpot` == "" ]]; then
     
-    `java -version > /dev/null 2> /tmp/dicom2dt.$RAN`
+    `java -Xmx1000M -version > /dev/null 2> /tmp/dicom2dt.$RAN`
     
     if [[ `cat /tmp/dicom2dt.$RAN | grep HotSpot` == "" ]]; then
 	    echo "Cannot find Sun java executable"
