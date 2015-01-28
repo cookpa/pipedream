@@ -7,9 +7,9 @@
 my $usage = qq{
 Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --mask mask --outroot outroot --outdir outdir
 
-  <bvals> - use specified b-values 
+  <bvals> - use specified b-values
 
-  <bvecs> - use specified b-vectors 
+  <bvecs> - use specified b-vectors
 
   <template> - template to match to the average DWI image
 
@@ -46,7 +46,7 @@ my $verbose = 0;
 my @exts = (".bval", ".bvec", ".nii", ".nii.gz", ".scheme" );
 
 GetOptions ("dwi=s{1,1000}" => \@dwiImages,    # string
-	    "bvals=s{1,1000}" => \@bvals, 
+	    "bvals=s{1,1000}" => \@bvals,
 	    "bvecs=s{1,1000}" => \@bvecs,
 	    "scheme=s{1,1000}" => \@scheme,
 	    "outdir=s" => \$outputDir,
@@ -71,7 +71,7 @@ my $cleanup=1;
 my ($antsDir, $caminoDir, $tmpDir) = @ENV{'ANTSPATH', 'CAMINOPATH', 'TMPDIR'};
 
 # Process command line args
-if ( ! -d $outputDir ) { 
+if ( ! -d $outputDir ) {
   mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
 }
 
@@ -79,7 +79,7 @@ if ( ! -d $outputDir ) {
 # Use SGE_TMP_DIR if possible to avoid hammering NFS
 if ( !($tmpDir && -d $tmpDir) ) {
     $tmpDir = $outputDir . "/${outputFileRoot}dtiproc";
-    
+
     mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Cannot create working directory $tmpDir\n\t";
 
     print "Placing working files in directory: $tmpDir\n";
@@ -97,12 +97,12 @@ if ( scalar(@scheme) == 0) {
     if ( scalar(@bvals) != scalar(@bvecs) ) {
 	die( "Inconsistant number of bvecs and bvals, cannot proceed with DT reconstruction");
     }
-    
+
     if ( (scalar(@bvals) != scalar(@dwiImages)) &&
 	 (scalar(@bvals) != 1) ) {
 	die( "Number of bvals files must be same as dwi-images or 1");
     }
-    
+
     if ( (scalar(@bvecs) != scalar(@dwiImages)) &&
 	 (scalar(@bvecs) != 1) ) {
 	die( "Number of bvecs files must be same as dwi-images or 1");
@@ -112,9 +112,9 @@ else {
     if ( (scalar(@scheme) != scalar(@dwiImages)) &&
 	 (scalar(@scheme) != 1) ) {
 	die( "Number of scheme files must be same as dwi-images or 1");
-    } 
+    }
 }
-     
+
 
 # done with args
 
@@ -139,26 +139,26 @@ my $outputDWI = "${outputDir}/${outputFileRoot}dwi.nii.gz";
 my $bvalMaster = "${outputDir}/${outputFileRoot}master.bval";
 my $bvecMaster = "${outputDir}/${outputFileRoot}master.bvec";
 if ( scalar(@bvals) > 0 ) {
-  
+
   if ( scalar(@bvals) > 1 ) {
     my $bvalString = join(" ", @bvals);
-    system("paste $bvalString > $bvalMaster");
+    system("paste -d \" \" $bvalString > $bvalMaster");
     }
   else {
     system("cp $bvals[0] $bvalMaster");
     }
   }
 if ( scalar(@bvecs) > 0 ) {
-  
+
   if ( scalar(@bvecs) > 1 ) {
     my $bvecString = join(" ", @bvecs);
-    system("paste $bvecString > $bvecMaster");
+    system("paste -d \" \" $bvecString > $bvecMaster");
     }
   else {
     system("cp $bvecs[0] $bvecMaster");
     }
   }
-  
+
 
 # -bscale 1 produces b values in 2 / mm ^2 on Siemens scanners. Adjust to taste
 my $nBFiles = scalar(@bvals);
@@ -171,10 +171,10 @@ if ( scalar(@scheme) == 0 ) {
 	  my $bval = $bvals[$i];
 	  my $bvec = $bvecs[$i];
 	  system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bval -bvecs $bvec > $sname");
-    }  
+    }
   }
 
-# If using repeats of same scheme 
+# If using repeats of same scheme
 if ( (scalar(@scheme)==1) && (scalar(@dwiImages) > 1) ) {
     print("Assuming repeats of same acquisition scheme\n");
     for ( my $i=1; $i < scalar(@dwiImages); $i += 1) {
@@ -221,7 +221,7 @@ system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrect
 # Now ready to do reconstruction
 # Don't pipe because of cluster memory restrictions
 print( "Begin DT reconstruction\n");
-system("${caminoDir}/image2voxel -4dimage $outputDWI > ${tmpDir}/vo.Bfloat"); 
+system("${caminoDir}/image2voxel -4dimage $outputDWI > ${tmpDir}/vo.Bfloat");
 
 print("wdtfit\n");
 system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $correctedScheme ${tmpDir}/sigmaSq.img -outputdatatype float > ${tmpDir}/dt.Bfloat");
@@ -240,11 +240,6 @@ system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColo
 
 
 # cleanup
-if ($cleanup) { 
+if ($cleanup) {
     `rm -rf $tmpDir`;
 }
-
-
-
-
-
