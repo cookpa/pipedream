@@ -1,163 +1,201 @@
-
-#!/usr/bin/perl -w
+# Called from bash wrapper to initialize library path
 #
-# Processes of DICOM DWI data and reconstructs diffusion tensors
 #
-
+# Processes raw Nifti DWI data and reconstructs diffusion tensors
+#
+#
 my $usage = qq{
-Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --mask mask --outroot outroot --outdir outdir
+Usage: nii2dt --dwi dwi.nii.gz --bvals bvals --bvecs bvecs --output-file-root file_root --output-dir out_dir [options]
 
-  <bvals> - use specified b-values
+  Required args
 
-  <bvecs> - use specified b-vectors
+  --dwi dwi.nii.gz
+    4D NIFTI image containing DWI data.
 
-  <template> - template to match to the average DWI image
+  --bvals bvals
+    b-values in FSL format.
 
-  <template_mask> - template brain mask to bring back to subject space
+  --bvecs bvecs
+    b-vectors in FSL format.
 
-  Program can proceed without masks (use NA NA) - but no brain masking will be done in that case.
+    The b-values and b-vectors should match the measurements in dwi.nii.gz.
 
-  <output_dir> - Output directory.
+  --output-file-root file_root
+    Root of output, eg subject_MRIDate_dti_ . Prepended onto output files <out_dir>. 
 
-  <output_file_root> - Root of output, eg subject_TP1_dti_ . Prepended onto output files and directories in
-    <output_dir>. This should be unique enough to avoid any possible conflict within your data set.
+  --output-dir out_dir
+    Directory for output.
 
-  <dwi_1> - 4D NIFTI image containing DWI data matching the scheme file. Optionally, this may be followed
-    by other images containing repeat scans; the combined data will be used to fit the diffusion tensor.
 
+  To concatenate separate DWI series into a single output, pass multiple arguments to --dwi and if appropriate --bvals / --bvecs.
+
+  For example:
+
+    --dwi dwi1.nii.gz dwi2.nii.gz dwi3.nii.gz  --bvals dwi_bval  --bvecs dwi_bvec
+
+  This assumes three repeats of the same sequence, each described using the same bvals / bvecs. If the imaging scheme is not 
+  identical across series, the schemes can be passed explicitly in order, eg:
+
+    --dwi dwi1.nii.gz dwi2.nii.gz  --bvals dwi_bval1 dwi_bval2  --bvecs dwi_bvec1 dwi_bvec2
+
+
+  Optional args and parameters:
+
+
+  --motion-correction-transform affine | rigid | none 
+    The default transform for motion / distortcion correction is affine. Optionally this may be set to "rigid" or "none".
+
+  --verbose 
+    Enables verbose output.
 
 };
 
 use strict;
+
 use FindBin qw($Bin);
 use File::Path;
 use File::Spec;
 use File::Basename;
 use Getopt::Long;
 
+use PipeDream::Dependencies;
+
 my @dwiImages = ();
 my @bvals = ();
 my @bvecs = ();
-my @scheme = ();
 my $outputFileRoot = "";
 my $outputDir = "";
 my $verbose = 0;
+my $mocoTransform = "affine";
 
-my @exts = (".bval", ".bvec", ".nii", ".nii.gz", ".scheme" );
+
+my @exts = (".bval", ".bvec", ".nii", ".nii.gz");
+
+if ($#ARGV < 0) {
+    print $usage;
+    exit 1;
+}
+
+# Check dependencies
+( haveCamino() && haveANTs() ) or die "\nMissing required dependencies, check PATH";
+
+
+# Process command line args
 
 GetOptions ("dwi=s{1,1000}" => \@dwiImages,    # string
 	    "bvals=s{1,1000}" => \@bvals,
 	    "bvecs=s{1,1000}" => \@bvecs,
-	    "scheme=s{1,1000}" => \@scheme,
-	    "outdir=s" => \$outputDir,
-	    "outroot=s" => \$outputFileRoot,
-	    "verbose"  => \$verbose)   # flag
+	    "output-dir=s" => \$outputDir,
+	    "output-file-root=s" => \$outputFileRoot,
+	    "verbose"  => \$verbose, # flag
+	    "motion-correction-transform=s" => \$mocoTransform)
     or die("Error in command line arguments\n");
 
 if ( $verbose ) {
     print( "DWI:\n @dwiImages \n");
     print( "BVALS:\n @bvals \n");
     print( "BVECS:\n @bvecs \n");
-    print( "SCHEME:\n @scheme\n");
     print("OUTROOT: $outputFileRoot \n");
     print("OUTDIR: $outputDir \n");
+}
+
+
+my $numScans = scalar(@dwiImages);
+print "\nProcessing " . $numScans . " scans.\n";
+
+# Check args
+if ( !scalar(@bvals) || !scalar(@bvecs) ) {
+    die( "Missing bvecs or bvals, cannot proceed with DT reconstruction");
+}
+
+if ( scalar(@bvals) != scalar(@bvecs) ) {
+    die( "Inconsistant number of bvec and bval files, cannot proceed with DT reconstruction");
+}
+
+if ( (scalar(@bvals) != $numScans) &&
+     (scalar(@bvals) != 1) ) {
+    die( "Number of bval files must be 1 or equal to the number of dwi volumes ($numScans).");
+}
+
+if ( (scalar(@bvecs) != $numScans) &&
+     (scalar(@bvecs) != 1) ) {
+    die( "Number of bvec files must be 1 or equal to the number of dwi volumes ($numScans).");
+}
+
+if ( !($mocoTransform =~ m/^affine|rigid|none$/i) ) {
+    die("Unrecognized motion correction transform $mocoTransform");
+}
+
+if ( ! -d $outputDir ) {
+  mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir";
+}
+
+# done with args
+
+# Directory for temporary files that we will optionally clean up when we're done
+# Use SGE TMPDIR if possible
+if ( !($tmpDir && -d $tmpDir) ) {
+    $tmpDir = $outputDir . "/${outputFileRoot}dtiproc";
+}
+else {
+    # Make a tmp dir within $TMPDIR - then we can delete this safely without messing up other processes
+    $tmpDir = "$tmpDir/${outputFileRoot}dtiproc";
+}
+
+mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Cannot create working directory $tmpDir";
+
+if ($verbose) {
+    print "Placing working files in directory: $tmpDir\n";
 }
 
 # Set to 1 to delete intermediate files after we're done
 # Has no effect if using qsub since files get cleaned up anyhow
 my $cleanup=1;
 
-# Get the directories containing programs we need
-my ($antsDir, $caminoDir, $tmpDir) = @ENV{'ANTSPATH', 'CAMINOPATH', 'TMPDIR'};
-
-# Process command line args
-if ( ! -d $outputDir ) {
-  mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
-}
-
-# Directory for temporary files that we will optionally clean up when we're done
-# Use SGE_TMP_DIR if possible to avoid hammering NFS
-if ( !($tmpDir && -d $tmpDir) ) {
-    $tmpDir = $outputDir . "/${outputFileRoot}dtiproc";
-
-    mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Cannot create working directory $tmpDir\n\t";
-
-    print "Placing working files in directory: $tmpDir\n";
-}
 
 
-# FIXME - warnings/error related to command line ops
-my $numScans = scalar(@dwiImages);
-print "\nProcessing " . $numScans . " scans.\n";
 
-if ( scalar(@scheme) == 0) {
-    if ( !scalar(@bvals) || !scalar(@bvecs) ) {
-	die( "Missing bvecs or bvals, cannot proceed with DT reconstruction");
-    }
-    if ( scalar(@bvals) != scalar(@bvecs) ) {
-	die( "Inconsistant number of bvecs and bvals, cannot proceed with DT reconstruction");
-    }
-
-    if ( (scalar(@bvals) != scalar(@dwiImages)) &&
-	 (scalar(@bvals) != 1) ) {
-	die( "Number of bvals files must be same as dwi-images or 1");
-    }
-
-    if ( (scalar(@bvecs) != scalar(@dwiImages)) &&
-	 (scalar(@bvecs) != 1) ) {
-	die( "Number of bvecs files must be same as dwi-images or 1");
-    }
-}
-else {
-    if ( (scalar(@scheme) != scalar(@dwiImages)) &&
-	 (scalar(@scheme) != 1) ) {
-	die( "Number of scheme files must be same as dwi-images or 1");
-    }
-}
-
-
-# done with args
 
 # ---OUTPUT FILES AND DIRECTORIES---
 
 # Some output is hard coded as ${outputFileRoot}_something
 
-my $outputSchemeFile = "${outputDir}/${outputFileRoot}allscans.scheme";
+my $outputAverageDWI = "${outputDir}/${outputFileRoot}averageDWI.nii.gz";
 
-my $outputDWI_Dir = "${outputDir}/${outputFileRoot}dwi";
-
-my $outputImageListFile = "${outputDWI_Dir}/${outputFileRoot}imagelist.txt";
-
-my $outputBrainMask = "${outputDir}/${outputFileRoot}brainmask.nii.gz";
-
-my $outputAverageDWI = "${outputDir}/${outputFileRoot}averagedwi.nii.gz";
+my $outputAverageB0 = "${outputDir}/${outputFileRoot}averageB0.nii.gz";
 
 my $outputDWI = "${outputDir}/${outputFileRoot}dwi.nii.gz";
 
 # ---OUTPUT FILES AND DIRECTORIES---
 
-my $bvalMaster = "${outputDir}/${outputFileRoot}master.bval";
-my $bvecMaster = "${outputDir}/${outputFileRoot}master.bvec";
+# Combined, uncorrected bvals and bvecs
+my $combinedSchemeFileRoot="${outputDir}/${outputFileRoot}combined";
+
+my $bvalMaster = "${combinedSchemeFileRoot}.bval";
+my $bvecMaster = "${combinedSchemeFileRoot}.bvec";
+
+createCombinedScheme($combinedSchemeFileRoot, $numScans, \@bvals, \@bvecs);
+
 if ( scalar(@bvals) > 0 ) {
-
-  if ( scalar(@bvals) > 1 ) {
-    my $bvalString = join(" ", @bvals);
-    system("paste -d \" \" $bvalString > $bvalMaster");
+    
+    if ( scalar(@bvals) > 1 ) {
+	my $bvalString = join(" ", @bvals);
+	system("paste -d \" \" $bvalString > $bvalMaster");
     }
-  else {
-    system("cp $bvals[0] $bvalMaster");
+    else {
+	system("cp $bvals[0] $bvalMaster");
     }
-  }
+}
 if ( scalar(@bvecs) > 0 ) {
-
-  if ( scalar(@bvecs) > 1 ) {
-    my $bvecString = join(" ", @bvecs);
-    system("paste -d \" \" $bvecString > $bvecMaster");
+    
+    if ( scalar(@bvecs) > 1 ) {
+	my $bvecString = join(" ", @bvecs);
+	system("paste -d \" \" $bvecString > $bvecMaster");
     }
-  else {
-    system("cp $bvecs[0] $bvecMaster");
+    else {
+	system("cp $bvecs[0] $bvecMaster");
     }
-  }
+}
 
 
 # -bscale 1 produces b values in 2 / mm ^2 on Siemens scanners. Adjust to taste
@@ -243,3 +281,97 @@ system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColo
 if ($cleanup) {
     `rm -rf $tmpDir`;
 }
+
+
+
+# createCombinedScheme($combinedSchemeFileRoot, $numScans, \@bvals, \@bvecs)
+#
+# Writes ${combinedSchemeFileRoot}.[scheme, bval, bvec]
+#
+# If $numScans > 1, then repeat $bval[0] and $bvec[0] for all schemes
+#
+sub createCombinedScheme {
+    
+    my ($fileRoot, $numScans, $bvalRef, $bvecRef) = @_;
+
+    my @bvalFiles = @${bvalRef};
+    my @bvecFiles = @${bvecRef};
+
+    if ( scalar(@bvalFiles) == 1 && $numScans > 1) {
+	
+    }
+    if ( scalar(@bvecFiles) == 1 && $numScans > 1) {
+	
+    }
+
+    # At this point, should have scalar(@bvalFiles) == scalar(@bvecFiles) == $numScans)
+
+    if (  (scalar(@bvecFiles) != $numScans) || (scalar(@bvalFiles) != $numScans) ) {
+	die "Mismatch between bvals, bvecs, and number of scans";
+    }
+
+    # Master list of values
+    my @bvals = ();
+
+    # Stored in FSL format for ease of writing
+    my @bvecs = ();
+
+
+    # Read bvalues and bvectors in official FSL format - more readable transpose format is rumored to work
+    # but not documented as of FSL 5
+
+    my $bvalCounter = 0;
+    my $bvecCounter = 0;
+
+    for (my $i = 0; $i < $numScans; $i++) {
+	
+	open(my $fh, "<$bvalFiles[$i]");
+	
+	my $line = <$fh>;
+	
+	my @tokens = split("\s+", trim($line));
+
+	# Number of measurements in this series
+	my $numMeas = scalar(@tokens);
+	
+	foreach my $bValue (@tokens) {
+	    $bvals[$bvalCounter++] = $bValue;
+	}
+	
+	close($fh);
+	
+	open($fh, "<$bvecFiles[$i]");
+	
+	for (my $n = 0; $n < 3; $n++) {
+	    my $line = <$fh>;
+	    
+	    @tokens = split("\s+", trim($line));
+
+	    if ( scalar(@tokens) != $numMeas ) {
+		die " Expected $numMeas b-vectors but got " . scalar(@tokens);
+	    }
+
+	    for (my $v = 0; $v < $numMeas; $v++) {
+		$bvecs[$n][$bvecCounter + $v] = $tokens[$v];
+	    }
+	}
+
+	close($fh);
+
+	$bvecCounter += $numMeas;
+    }
+    
+
+    # Now write them out in FSL and Camino format
+
+    open(my $fh, ">${fileRoot}.bval");
+
+    print $fh join(" ", @bvals);
+
+    close($fh);
+
+    
+    
+
+}
+

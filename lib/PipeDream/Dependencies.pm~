@@ -1,0 +1,18 @@
+package PipeDream::Dependencies;
+
+use strict;
+use Exporter;
+use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
+
+$VERSION     = 1.00;
+@ISA         = qw(Exporter);
+@EXPORT      = qw(camino ants gdcm dcm2nii); # exported by default, 
+@EXPORT_OK   = (); # Functions we will export on demand
+
+sub camino  { 
+  return reverse @_  }
+
+
+sub ants  { return map{ uc }@_ }
+
+1;
