@@ -5,26 +5,18 @@
 #
 
 my $usage = qq{
-Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --mask mask --outroot outroot --outdir outdir
+Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --correction-target [b0 | dwi | mean]  --outroot outroot --outdir outdir
 
-  <bvals> - use specified b-values
+  <outdir> - Output directory.
 
-  <bvecs> - use specified b-vectors
+  <outroot> - Root of output, eg subject_TP1_dti_ . Prepended onto output files and directories in
+    <outdir>. This should be unique enough to avoid any possible conflict within your data set.
 
-  <template> - template to match to the average DWI image
+  <dwi_1> - 4D NIFTI image containing DWI data. Optionally, this may be followed by other images and bvals / bvecs 
+  containing repeat scans; the combined data will be used to fit the diffusion tensor.
 
-  <template_mask> - template brain mask to bring back to subject space
-
-  Program can proceed without masks (use NA NA) - but no brain masking will be done in that case.
-
-  <output_dir> - Output directory.
-
-  <output_file_root> - Root of output, eg subject_TP1_dti_ . Prepended onto output files and directories in
-    <output_dir>. This should be unique enough to avoid any possible conflict within your data set.
-
-  <dwi_1> - 4D NIFTI image containing DWI data matching the scheme file. Optionally, this may be followed
-    by other images containing repeat scans; the combined data will be used to fit the diffusion tensor.
-
+  Distortion / motion correction is to the average b=0 image by default; set --correction-target dwi to use
+  the median DWI image or mean to use the mean of all data (the old default).
 
 };
 
@@ -38,34 +30,41 @@ use Getopt::Long;
 my @dwiImages = ();
 my @bvals = ();
 my @bvecs = ();
-my @scheme = ();
 my $outputFileRoot = "";
 my $outputDir = "";
 my $verbose = 0;
+my $distCorrTargetImageType = "b0";
+
+if ($#ARGV < 0) {
+    print $usage;
+    exit 1;
+}
 
 my @exts = (".bval", ".bvec", ".nii", ".nii.gz", ".scheme" );
 
 GetOptions ("dwi=s{1,1000}" => \@dwiImages,    # string
 	    "bvals=s{1,1000}" => \@bvals,
 	    "bvecs=s{1,1000}" => \@bvecs,
-	    "scheme=s{1,1000}" => \@scheme,
 	    "outdir=s" => \$outputDir,
 	    "outroot=s" => \$outputFileRoot,
-	    "verbose"  => \$verbose)   # flag
+	    "verbose"  => \$verbose,
+	    "correction-target=s" => \$distCorrTargetImageType )   # flag
     or die("Error in command line arguments\n");
+
+# Convert string options to lower case 
+$distCorrTargetImageType = lc($distCorrTargetImageType);
 
 if ( $verbose ) {
     print( "DWI:\n @dwiImages \n");
     print( "BVALS:\n @bvals \n");
     print( "BVECS:\n @bvecs \n");
-    print( "SCHEME:\n @scheme\n");
     print("OUTROOT: $outputFileRoot \n");
     print("OUTDIR: $outputDir \n");
 }
 
 # Set to 1 to delete intermediate files after we're done
 # Has no effect if using qsub since files get cleaned up anyhow
-my $cleanup=1;
+my $cleanup=0;
 
 # Get the directories containing programs we need
 my ($antsDir, $caminoDir, $tmpDir) = @ENV{'ANTSPATH', 'CAMINOPATH', 'TMPDIR'};
@@ -86,33 +85,21 @@ if ( !($tmpDir && -d $tmpDir) ) {
 }
 
 
-# FIXME - warnings/error related to command line ops
 my $numScans = scalar(@dwiImages);
+
 print "\nProcessing " . $numScans . " scans.\n";
 
-if ( scalar(@scheme) == 0) {
-    if ( !scalar(@bvals) || !scalar(@bvecs) ) {
-	die( "Missing bvecs or bvals, cannot proceed with DT reconstruction");
-    }
-    if ( scalar(@bvals) != scalar(@bvecs) ) {
-	die( "Inconsistant number of bvecs and bvals, cannot proceed with DT reconstruction");
-    }
-
-    if ( (scalar(@bvals) != scalar(@dwiImages)) &&
-	 (scalar(@bvals) != 1) ) {
-	die( "Number of bvals files must be same as dwi-images or 1");
-    }
-
-    if ( (scalar(@bvecs) != scalar(@dwiImages)) &&
-	 (scalar(@bvecs) != 1) ) {
-	die( "Number of bvecs files must be same as dwi-images or 1");
-    }
+if ( !scalar(@bvals) || !scalar(@bvecs) ) {
+    die( "Missing bvecs or bvals, cannot proceed with DT reconstruction");
 }
-else {
-    if ( (scalar(@scheme) != scalar(@dwiImages)) &&
-	 (scalar(@scheme) != 1) ) {
-	die( "Number of scheme files must be same as dwi-images or 1");
-    }
+if ( scalar(@bvals) != scalar(@bvecs) ) {
+    die( "Inconsistant number of bvecs and bvals, cannot proceed with DT reconstruction");
+}
+if ( scalar(@bvals) != $numScans ) {
+    die( "Number of bvals files must be same as the number of DWI images");
+}
+if ( scalar(@bvecs) != $numScans ) { 
+    die( "Number of bvecs files must be same as DWI images");
 }
 
 
@@ -122,101 +109,144 @@ else {
 
 # Some output is hard coded as ${outputFileRoot}_something
 
-my $outputSchemeFile = "${outputDir}/${outputFileRoot}allscans.scheme";
-
 my $outputDWI_Dir = "${outputDir}/${outputFileRoot}dwi";
 
 my $outputImageListFile = "${outputDWI_Dir}/${outputFileRoot}imagelist.txt";
 
-my $outputBrainMask = "${outputDir}/${outputFileRoot}brainmask.nii.gz";
+my $outputAverageB0 = "${outputDir}/${outputFileRoot}averageB0.nii.gz";
 
-my $outputAverageDWI = "${outputDir}/${outputFileRoot}averagedwi.nii.gz";
+my $outputAverageDWI = "${outputDir}/${outputFileRoot}averageDWI.nii.gz";
 
 my $outputDWI = "${outputDir}/${outputFileRoot}dwi.nii.gz";
 
 # ---OUTPUT FILES AND DIRECTORIES---
 
-my $bvalMaster = "${outputDir}/${outputFileRoot}master.bval";
-my $bvecMaster = "${outputDir}/${outputFileRoot}master.bvec";
-if ( scalar(@bvals) > 0 ) {
+my $bvalMaster = "${tmpDir}/${outputFileRoot}master.bval";
+my $bvecMaster = "${tmpDir}/${outputFileRoot}master.bvec";
 
-  if ( scalar(@bvals) > 1 ) {
-    my $bvalString = join(" ", @bvals);
-    system("paste -d \" \" $bvalString > $bvalMaster");
-    }
-  else {
+if ( $numScans > 1 ) {
+    my $bvalFileNames = join(" ", @bvals);
+
+    system("paste -d \" \" $bvalFileNames > $bvalMaster");
+
+    # Make sure there is no double spacing - it breaks space delimited ITK readers
+    open(my $fh, "<", "$bvalMaster") or die "Cant open $bvalMaster\n";
+ 
+    local $/ = undef;
+    
+    my $bvalString = <$fh>;
+    
+    close($fh);
+    
+    $bvalString =~ s/[ ]{2,}/ /g;
+    
+    open($fh, ">", "$bvalMaster") or die "Cant open $bvalMaster\n";
+
+    print $fh $bvalString;
+
+    close($fh);
+
+}
+else {
     system("cp $bvals[0] $bvalMaster");
-    }
-  }
-if ( scalar(@bvecs) > 0 ) {
+}
+if ( $numScans > 1 ) {
 
-  if ( scalar(@bvecs) > 1 ) {
-    my $bvecString = join(" ", @bvecs);
-    system("paste -d \" \" $bvecString > $bvecMaster");
-    }
-  else {
+    my $bvecFileNames = join(" ", @bvecs);
+
+    system("paste -d \" \" $bvecFileNames > $bvecMaster");
+
+    # Make sure there is no double spacing - it breaks space delimited ITK readers
+    open(my $fh, "<", "$bvecMaster") or die "Cant open $bvecMaster\n";
+ 
+    local $/ = undef;
+    
+    my $bvecString = <$fh>;
+    
+    close($fh);
+    
+    $bvecString =~ s/[ ]{2,}/ /g;
+    
+    open($fh, ">", "$bvecMaster") or die "Cant open $bvecMaster\n";
+
+    print $fh $bvecString;
+
+    close($fh);
+}
+else {
     system("cp $bvecs[0] $bvecMaster");
-    }
-  }
-
-
-# -bscale 1 produces b values in 2 / mm ^2 on Siemens scanners. Adjust to taste
-my $nBFiles = scalar(@bvals);
-if ( scalar(@scheme) == 0 ) {
-  for (my $i = 0; $i < $nBFiles; $i += 1) {
-	  my $bname = basename($bvals[$i], @exts);
-	  my $sname = "${outputDir}/${bname}.scheme";
-	  push(@scheme, $sname);
-	  print "$sname\n";
-	  my $bval = $bvals[$i];
-	  my $bvec = $bvecs[$i];
-	  system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bval -bvecs $bvec > $sname");
-    }
-  }
-
-# If using repeats of same scheme
-if ( (scalar(@scheme)==1) && (scalar(@dwiImages) > 1) ) {
-    print("Assuming repeats of same acquisition scheme\n");
-    for ( my $i=1; $i < scalar(@dwiImages); $i += 1) {
-	push(@scheme, $scheme[0]);
-    }
 }
 
-my $masterScheme = "${outputDir}/${outputFileRoot}master.scheme";
-system("cat $scheme[0] | grep -v \"^\$\" > $masterScheme");
 
-if ( scalar(@scheme) > 1 ) {
-    for ( my $i = 1; $i < scalar(@scheme); $i += 1 ) {
-	system( "cat $scheme[$i] | grep -v \"^\$\" | grep -v \"VERSION\" |  grep -v \"#\" >> $masterScheme");
-   }
-}
-system("cp $dwiImages[0] $outputDWI");
+my @scheme = ();
+
+# Make Camino scheme version from supplied bvals / bvecs
+
+my $masterScheme = "${tmpDir}/${outputFileRoot}master.scheme";
+
+system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecMaster > $masterScheme");
+ 
+
+my $uncorrectedDWI = "${tmpDir}/${outputFileRoot}dwi.nii.gz";
+
+system("cp $dwiImages[0] $uncorrectedDWI");
 if ( scalar(@dwiImages) > 1 ) {
     print( "Merging acquistions for motion correction \n");
     for ( my $i = 1; $i < scalar(@dwiImages); $i += 1) {
-	system("${antsDir}/ImageMath 4 $outputDWI stack $outputDWI $dwiImages[$i]");
+	system("${antsDir}/ImageMath 4 $uncorrectedDWI stack $uncorrectedDWI $dwiImages[$i]");
     }
 }
 
-my $ref = "${outputDir}/${outputFileRoot}ref.nii.gz";
-if ( ! -e "$ref" ) {
-  system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
-  system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -u 1 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
-  }
-else {
-  print( "Motion correction already exists\n");
+my $ref = "${tmpDir}/${outputFileRoot}ref.nii.gz";
+
+if ($distCorrTargetImageType eq "b0") {
+    print " Using average b=0 for distortion / motion correction \n";
+
+    system("${caminoDir}/averagedwi -inputfile $uncorrectedDWI -outputfile $ref -minbval 0 -maxbval 0 -schemefile $masterScheme");
 }
+elsif ($distCorrTargetImageType eq "dwi") {
+    print " Using median DWI for distortion / motion correction \n";
+
+    system("${caminoDir}/averagedwi -inputfile $uncorrectedDWI -outputfile $ref -minbval 500 -maxbval 1500 -schemefile $masterScheme -median");
+}
+elsif ($distCorrTargetImageType eq "mean") {
+    print " Using mean of all measurements for distortion / motion correction \n";
+
+    system("${caminoDir}/averagedwi -inputfile $uncorrectedDWI -outputfile $ref -schemefile $masterScheme");
+}
+else {
+    die "Unrecognized target image type $distCorrTargetImageType, valid choices are 'b0' or 'dwi'";
+}
+
+system("${antsDir}/antsMotionCorr -d 3 -m MI[${ref},${uncorrectedDWI}, 1, 32, Regular, 0.125] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -o [${outputDir}/${outputFileRoot}, ${outputDWI}]");
+
+# Compute corrected average DWI and B0
+system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}averageB0.nii.gz -minbval 0 -maxbval 0 -schemefile $masterScheme");
+
+system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}averageDWI.nii.gz -minbval 500 -maxbval 1500 -schemefile $masterScheme");
+
+system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}medianDWI.nii.gz -minbval 500 -maxbval 1500 -schemefile $masterScheme -median");
 
 
 # Correct directions via motion correction parameters
-print( "Correcting directions stored in $bvecMaster\n" );
+print( "Correcting gradient directions\n" );
 my $correctedScheme = "${outputDir}/${outputFileRoot}corrected.scheme";
 my $bvecCorrected = "${outputDir}/${outputFileRoot}corrected.bvec";
-my $correctDirections = "${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv --physical ${ref}";
-print( "$correctDirections\n");
-system($correctDirections);
+
+# B-values don't change but call them the same thing 
+system("cp $bvalMaster ${outputDir}/${outputFileRoot}corrected.bval");
+
+my $cmd = "${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv --physical ${ref}";
+
+system("$cmd");
+
+print $cmd . "\n";
 
 system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrected > $correctedScheme");
+
+# For debugging and possible visualization of correction, output uncorrected scheme also
+system("cp $masterScheme ${outputDir}/${outputFileRoot}uncorrected.scheme");
+
 
 # Now ready to do reconstruction
 # Don't pipe because of cluster memory restrictions
@@ -224,10 +254,12 @@ print( "Begin DT reconstruction\n");
 system("${caminoDir}/image2voxel -4dimage $outputDWI > ${tmpDir}/vo.Bfloat");
 
 print("wdtfit\n");
+
+# Note the sigmaSq image is always written as double, the tensor type is controlled by -outputdatatype
 system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $correctedScheme ${tmpDir}/sigmaSq.img -outputdatatype float > ${tmpDir}/dt.Bfloat");
 
 print("sigma img\n");
-system("cat ${tmpDir}/sigmaSq.img | voxel2image -inputdatatype float -header $ref -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
+system("cat ${tmpDir}/sigmaSq.img | ${caminoDir}/voxel2image -header $ref -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
 
 print("dt2nii\n");
 system("${caminoDir}/dt2nii -header $ref -outputroot ${outputDir}/${outputFileRoot} -inputfile ${tmpDir}/dt.Bfloat -inputdatatype float -outputdatatype float -gzip");
