@@ -43,7 +43,12 @@ Usage: nii2dt --dwi dwi.nii.gz --bvals bvals --bvecs bvecs --output-file-root fi
 
 
   --motion-correction-transform affine | rigid | none 
-    The default transform for motion / distortcion correction is affine. Optionally this may be set to "rigid" or "none".
+    The default transform for motion / distortion correction is affine. Optionally this may be set to "rigid" or "none".
+
+  --unweighted-b-value 0 
+    The maximum b-value to be treated as unweighted. Some acquisition schemes acquire a small b-value rather than 0, 
+    so it may be necessary to tell the script to collect unweighted images in a non-zero range. For example, passing 5 here
+    will treat anything with a b-value between 0 and 5 as if it were 0. 
 
   --verbose 
     Enables verbose output.
@@ -68,6 +73,7 @@ my $outputDir = "";
 my $verbose = 0;
 my $mocoTransform = "affine";
 
+my $unweightedB_Val = 0;
 
 my @exts = (".bval", ".bvec", ".nii", ".nii.gz");
 
@@ -88,7 +94,8 @@ GetOptions ("dwi=s{1,1000}" => \@dwiImages,    # string
 	    "output-dir=s" => \$outputDir,
 	    "output-file-root=s" => \$outputFileRoot,
 	    "verbose"  => \$verbose, # flag
-	    "motion-correction-transform=s" => \$mocoTransform)
+	    "motion-correction-transform=s" => \$mocoTransform,
+	    "unweighted-b-value=f" => \$unweightedB_Val);
     or die("Error in command line arguments\n");
 
 if ( $verbose ) {
@@ -98,6 +105,12 @@ if ( $verbose ) {
     print("OUTROOT: $outputFileRoot \n");
     print("OUTDIR: $outputDir \n");
 }
+
+
+# These aren't options and hopefully will work; even multi-shell data should have enough data in this range to 
+# make for a useful average DWI image
+my $minB_ForAverageDWI = 600;
+my $maxB_ForAverageDWI = 1600;
 
 
 my $numScans = scalar(@dwiImages);
@@ -171,90 +184,25 @@ my $outputDWI = "${outputDir}/${outputFileRoot}dwi.nii.gz";
 # Combined, uncorrected bvals and bvecs
 my $combinedSchemeFileRoot="${outputDir}/${outputFileRoot}combined";
 
-my $bvalMaster = "${combinedSchemeFileRoot}.bval";
-my $bvecMaster = "${combinedSchemeFileRoot}.bvec";
-
 createCombinedScheme($combinedSchemeFileRoot, $numScans, \@bvals, \@bvecs);
 
-if ( scalar(@bvals) > 0 ) {
-    
-    if ( scalar(@bvals) > 1 ) {
-	my $bvalString = join(" ", @bvals);
-	system("paste -d \" \" $bvalString > $bvalMaster");
-    }
-    else {
-	system("cp $bvals[0] $bvalMaster");
-    }
-}
-if ( scalar(@bvecs) > 0 ) {
-    
-    if ( scalar(@bvecs) > 1 ) {
-	my $bvecString = join(" ", @bvecs);
-	system("paste -d \" \" $bvecString > $bvecMaster");
-    }
-    else {
-	system("cp $bvecs[0] $bvecMaster");
-    }
-}
+# As created by the above call to createCombinedScheme
+my $bvalMaster = "${combinedSchemeFileRoot}.bval";
+my $bvecMaster = "${combinedSchemeFileRoot}.bvec";
+my $schemeMaster = "${combinedSchemeFileRoot}.scheme";
 
+my $dwiMaster = "${tmpDir}/${outputFileRoot}dwiUncorrected.nii.gz";
 
-# -bscale 1 produces b values in 2 / mm ^2 on Siemens scanners. Adjust to taste
-my $nBFiles = scalar(@bvals);
-if ( scalar(@scheme) == 0 ) {
-  for (my $i = 0; $i < $nBFiles; $i += 1) {
-	  my $bname = basename($bvals[$i], @exts);
-	  my $sname = "${outputDir}/${bname}.scheme";
-	  push(@scheme, $sname);
-	  print "$sname\n";
-	  my $bval = $bvals[$i];
-	  my $bvec = $bvecs[$i];
-	  system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bval -bvecs $bvec > $sname");
-    }
-  }
+system("cp $dwiImages[0] $dwiMaster");
 
-# If using repeats of same scheme
-if ( (scalar(@scheme)==1) && (scalar(@dwiImages) > 1) ) {
-    print("Assuming repeats of same acquisition scheme\n");
-    for ( my $i=1; $i < scalar(@dwiImages); $i += 1) {
-	push(@scheme, $scheme[0]);
-    }
-}
-
-my $masterScheme = "${outputDir}/${outputFileRoot}master.scheme";
-system("cat $scheme[0] | grep -v \"^\$\" > $masterScheme");
-
-if ( scalar(@scheme) > 1 ) {
-    for ( my $i = 1; $i < scalar(@scheme); $i += 1 ) {
-	system( "cat $scheme[$i] | grep -v \"^\$\" | grep -v \"VERSION\" |  grep -v \"#\" >> $masterScheme");
-   }
-}
-system("cp $dwiImages[0] $outputDWI");
 if ( scalar(@dwiImages) > 1 ) {
     print( "Merging acquistions for motion correction \n");
     for ( my $i = 1; $i < scalar(@dwiImages); $i += 1) {
-	system("${antsDir}/ImageMath 4 $outputDWI stack $outputDWI $dwiImages[$i]");
+	system("ImageMath 4 $dwiMaster stack $dwiMaster $dwiImages[$i]");
     }
 }
 
-my $ref = "${outputDir}/${outputFileRoot}ref.nii.gz";
-if ( ! -e "$ref" ) {
-  system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
-  system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.05] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -u 1 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
-  }
-else {
-  print( "Motion correction already exists\n");
-}
-
-
-# Correct directions via motion correction parameters
-print( "Correcting directions stored in $bvecMaster\n" );
-my $correctedScheme = "${outputDir}/${outputFileRoot}corrected.scheme";
-my $bvecCorrected = "${outputDir}/${outputFileRoot}corrected.bvec";
-my $correctDirections = "${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv --physical ${ref}";
-print( "$correctDirections\n");
-system($correctDirections);
-
-system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrected > $correctedScheme");
+runDistCorr($dwiMaster, $schemeMaster, $distcorrRefImageType, $distcorrTransform); 
 
 # Now ready to do reconstruction
 # Don't pipe because of cluster memory restrictions
@@ -271,10 +219,10 @@ print("dt2nii\n");
 system("${caminoDir}/dt2nii -header $ref -outputroot ${outputDir}/${outputFileRoot} -inputfile ${tmpDir}/dt.Bfloat -inputdatatype float -outputdatatype float -gzip");
 
 # Add images for QC
-system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}fa.nii.gz TensorFA ${outputDir}/${outputFileRoot}dt.nii.gz");
-system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}md.nii.gz TensorMeanDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
-system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rd.nii.gz TensorRadialDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
-system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColor ${outputDir}/${outputFileRoot}dt.nii.gz");
+system("ImageMath 3 ${outputDir}/${outputFileRoot}fa.nii.gz TensorFA ${outputDir}/${outputFileRoot}dt.nii.gz");
+system("ImageMath 3 ${outputDir}/${outputFileRoot}md.nii.gz TensorMeanDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
+system("ImageMath 3 ${outputDir}/${outputFileRoot}rd.nii.gz TensorRadialDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
+system("ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColor ${outputDir}/${outputFileRoot}dt.nii.gz");
 
 
 # cleanup
@@ -362,7 +310,7 @@ sub createCombinedScheme {
     }
     
 
-    # Now write them out in FSL and Camino format
+    # Now write them out in FSL format
 
     open(my $fh, ">${fileRoot}.bval");
 
@@ -371,7 +319,76 @@ sub createCombinedScheme {
     close($fh);
 
     
-    
+    # Write Camino scheme
 
 }
 
+
+#
+# runDistCorr($dwiMaster, $schemeMaster, $distCorrRefImageType, $distCorrTransform)
+#
+# $dwiMaster - uncorrected DWI data
+# $schemeMaster - uncorrected scheme file
+# $distCorrRefImageType - "meanB0" or "meanDWI"
+# $distCorrTransform - "affine", "rigid", "none". 
+#
+# Makes use of script-level variables:
+#
+# $tmpDir
+# $unweightedB_Val
+# $outputDir
+# $outputfileRoot
+# 
+sub runDistCorr {
+
+
+    my ($dwiMaster, $schemeMaster, $outputRoot, $distCorrRefImageType, $distcorrTransform, $its) = @_;
+    
+    my $distCorrTargetImage;
+
+    # Make initial average b0 / average DWI images
+    system("averagedwi -schemefile $schemeMaster -minbval 0 -maxbval $unweightedB_Val -inputfile $dwiMaster -outputfile ${tmpDir}/${outputFileRoot}averageB0.nii.gz");
+    
+    # Get all b=0 data, and average
+    
+    # Then Rigid moco to average
+    
+    
+    
+    if ( ($distCorrRefImageType =~ m/meanb0/i) ) {
+	# Do final moco of all data to mean b0
+	
+    }
+    elsif ( ($distCorrRefImageType =~ m/meandwi/i) ) {
+
+	my $its = 2;
+
+	for (my $i = 0; $i < $its; $i++) {
+	    # Compute mean DWI, align it to mean b0, moco all images to corrected mean DWI
+	}
+	
+    }
+    else {
+	die "Unrecognized distortion correction target image type: $distCorrRefImageType");
+    }
+
+    
+    system("averagedwi -schemefile $schemeMaster -minbval $minB_ForAverageDWI -maxbval $maxB_ForAverageDWI -inputfile $uncorrectedDWI_Master -outputfile ${tmpDir}/${outputFileRoot}meanDWI.nii.gz");  
+    
+
+    system("${antsDir}/antsMotionCorr -d 3 -a $outputDWI -o $ref");
+    
+    system("${antsDir}/antsMotionCorr -d 3 -m MI[${outputDir}/${outputFileRoot}ref.nii.gz,${outputDWI}, 1, 32, Regular, 0.125] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -l 0 -o [${outputDir}/${outputFileRoot}, ${outputDWI}, $ref ]");
+    
+# Correct directions via motion correction parameters
+    print( "Correcting directions stored in $bvecMaster\n" );
+    my $correctedScheme = "${outputDir}/${outputFileRoot}corrected.scheme";
+    my $bvecCorrected = "${outputDir}/${outputFileRoot}corrected.bvec";
+    my $correctDirections = "${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --output $bvecCorrected --moco ${outputDir}/${outputFileRoot}MOCOparams.csv --physical ${ref}";
+    print( "$correctDirections\n");
+    system($correctDirections);
+    
+    system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrected > $correctedScheme");
+   
+
+}
