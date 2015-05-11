@@ -5,7 +5,7 @@
 #
 
 my $usage = qq{
-Usage: nii2dt.pl --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --correction-target [b0 | dwi | mean]  --outroot outroot --outdir outdir
+Usage: nii2dt --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --correction-target [b0 | dwi | mean]  --outroot outroot --outdir outdir
 
   <outdir> - Output directory.
 
@@ -64,25 +64,30 @@ if ( $verbose ) {
 
 # Set to 1 to delete intermediate files after we're done
 # Has no effect if using qsub since files get cleaned up anyhow
-my $cleanup=0;
+my $cleanup=1;
 
 # Get the directories containing programs we need
-my ($antsDir, $caminoDir, $tmpDir) = @ENV{'ANTSPATH', 'CAMINOPATH', 'TMPDIR'};
+my ($antsDir, $caminoDir, $sysTmpDir) = @ENV{'ANTSPATH', 'CAMINOPATH', 'TMPDIR'};
 
 # Process command line args
 if ( ! -d $outputDir ) {
   mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
 }
 
-# Directory for temporary files that we will optionally clean up when we're done
-# Use SGE_TMP_DIR if possible to avoid hammering NFS
-if ( !($tmpDir && -d $tmpDir) ) {
-    $tmpDir = $outputDir . "/${outputFileRoot}dtiproc";
+# Directory for temporary files that is deleted later if $cleanup
+my $tmpDir = "";
 
-    mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Cannot create working directory $tmpDir\n\t";
+my $tmpDirBaseName = "${outputFileRoot}dtiproc";
 
-    print "Placing working files in directory: $tmpDir\n";
+if ( !($sysTmpDir && -d $sysTmpDir) ) {
+    $tmpDir = $outputDir . "/${tmpDirBaseName}";
 }
+else {
+    # Have system tmp dir
+    $tmpDir = $sysTmpDir . "/${tmpDirBaseName}";
+}
+
+mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Cannot create working directory $tmpDir\n\t";
 
 
 my $numScans = scalar(@dwiImages);
@@ -240,8 +245,6 @@ my $cmd = "${antsDir}/antsMotionCorrDiffusionDirection --bvec $bvecMaster --outp
 
 system("$cmd");
 
-print $cmd . "\n";
-
 system("${caminoDir}/fsl2scheme -bscale 1 -bvals $bvalMaster -bvecs $bvecCorrected > $correctedScheme");
 
 # For debugging and possible visualization of correction, output uncorrected scheme also
@@ -259,7 +262,7 @@ print("wdtfit\n");
 system("${caminoDir}/wdtfit ${tmpDir}/vo.Bfloat $correctedScheme ${tmpDir}/sigmaSq.img -outputdatatype float > ${tmpDir}/dt.Bfloat");
 
 print("sigma img\n");
-system("cat ${tmpDir}/sigmaSq.img | ${caminoDir}/voxel2image -header $ref -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
+system("cat ${tmpDir}/sigmaSq.img | ${caminoDir}/voxel2image -header $ref -outputvector -outputroot ${outputDir}/${outputFileRoot}sigmaSq");
 
 print("dt2nii\n");
 system("${caminoDir}/dt2nii -header $ref -outputroot ${outputDir}/${outputFileRoot} -inputfile ${tmpDir}/dt.Bfloat -inputdatatype float -outputdatatype float -gzip");
@@ -273,5 +276,14 @@ system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColo
 
 # cleanup
 if ($cleanup) {
-    `rm -rf $tmpDir`;
+
+    # rm -rf is scary, so check to be sure
+   
+    if ($tmpDir =~ m/${tmpDirBaseName}$\/?/) {
+	system("rm -rf $tmpDir");
+    }
+    else {
+	die "$tmpDir - temp directory name unrecognized - not safe to delete, processing may be incomplete"
+    }
+
 }

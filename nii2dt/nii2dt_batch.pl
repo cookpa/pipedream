@@ -11,38 +11,42 @@ use File::Path;
 
 my $usage = qq{
     
- nii2dt <queue_type> <subject_list> <protocol_list> <data_dir> <dwi_dir>
+ nii2dt_batch <queue_type> <subject_list> <protocol_list> <input_base_dir> [input_dwi_dir = rawNii] [output_base_dir = input_base_dir] [output_dti_dir = DTI]
+
+
+  Required args:
 
 
   <queue_type> - type of queue to submit jobs. Either "sge", "voxbo", or "none"
 
 
-	<subject_list> - File containing the subject list, or a string identifying a single subject
+  <subject_list> - File containing the subject list, or a string identifying a single subject
 
 
-	<protocol_list> - The protocol list file. Contains a list of actual protocol names and their short form. 
-	  The short form is prepended onto the output files. All matching protocols are is processed, so it is 
-    important to provide unique short protocol names to avoid confusion. Example:
+  <protocol_list> - The protocol list file. Contains a list of actual protocol names and their short form. 
+   The short form is prepended onto the output files . All matching protocols are is processed, so the short form
+   must be unique.
 
-    DTI_30dir_noDiCo_vox2_1000    30dir_dt       
-	  ep2d_diff_MDDW_12             12dir_dt       
+   DTI_30dir_noDiCo_vox2_1000    30dir_dt       
+   ep2d_diff_MDDW_12             12dir_dt       
 	
-    The template / brain mask are an average DWI template. If you don't have one of these, no brain extraction
-    will be performed. However you can use the average DWI images to create a template, then re-run this script.
+   <input_base_dir> - input directory. Program looks for scans matching the protocol name in data_dir/SUBJECT/TIMEPOINT/input_dwi_dir. 
 
-    Different protocols can often share the same template, since the average DWI image often looks similar across
-    protocols. The quality of brain extraction should always be checked.
- 
-	<data_dir> - input directory. Program looks for scans matching the protocol name in data_dir/SUBJECT/TIMEPOINT/dwi_dir. 
 
-  <dwi_dir> - modality specific subdirectory
+   Options:
+
+
+   [input_dwi_dir] - modality specific subdirectory. Default: rawNii
   
-  <output_dir> - directory to store DTI in (will be data_dir/SUBJECT/TIMEPOINT/output_dir
+   [output_base_dir] - directory to store DTI. Processed data will be placed in output_base_dir/SUBJECT/TIMEPOINT/output_dti_dir.
+   Default: <input_base_dir>
+
+   [output_dti_dir] - final subdirectory for output. Default: DTI
 
 };
 
 
-my ($queueType, $subjectList, $protocolList, $inputBaseDir, $inputSubDir, $outputSubDir);
+my ($queueType, $subjectList, $protocolList, $inputBaseDir, $inputSubDir, $outputBaseDir, $outputSubDir);
 
 if (!($#ARGV + 1)) {
     print "$usage\n";
@@ -52,25 +56,11 @@ elsif ($#ARGV < 4) {
     die "ERROR: Missing arguments, run without args to see usage\n\t";
 }
 else { 
-    ($queueType, $subjectList, $protocolList, $inputBaseDir, $inputSubDir, $outputSubDir) = @ARGV;
+    ($queueType, $subjectList, $protocolList, $inputBaseDir, $inputSubDir, $outputBaseDir, $outputSubDir) = @ARGV;
 
 }
 
-my ($qsub, $vbbatch) = @ENV{'PIPEDREAMQSUB', 'PIPEDREAMVBBATCH'};
-
-# Convert I/O directories to absolute paths (needed for cluster)
-$inputBaseDir = File::Spec->rel2abs($inputBaseDir);
-
-
-# Eliminate ../ and such
-$inputBaseDir = realpath($inputBaseDir);
-
-
-# for voxbo
-my $userName = `whoami`;
-chomp($userName);
-my $queueName =  $userName . "_pddcm2dt";
-
+# Some arg checking
 
 my $useVoxbo = 0;
 my $useSGE = 0;
@@ -83,10 +73,58 @@ elsif ($queueType eq "sge") {
     $useSGE = 1;
 }
 else {
-
+    
     die "Unrecognized queue type $queueType" unless (uc($queueType) eq "NONE");
     $useConsole = 1;
 }
+
+# Allow subject to be a single subject string, so don't check it's a file
+
+if ( ! -f $protocolList) {
+    die "$protocolList is not a valid file name";
+}
+
+if ( ! -d $inputBaseDir ) {
+    die "$inputBaseDir does not exist or is not a directory";
+}
+
+
+my ($qsub, $vbbatch) = @ENV{'PIPEDREAMQSUB', 'PIPEDREAMVBBATCH'};
+
+# Convert I/O directories to absolute paths (needed for cluster)
+$inputBaseDir = File::Spec->rel2abs($inputBaseDir);
+
+
+# Eliminate ../ and such
+$inputBaseDir = realpath($inputBaseDir);
+
+# Deal with options that may not be defined
+if ( !length($inputSubDir) ) {
+    $inputSubDir = "rawNii";
+}
+
+
+if ( !length($outputBaseDir) ) {
+    $outputBaseDir = $inputBaseDir;
+}
+
+$outputBaseDir = File::Spec->rel2abs($outputBaseDir);
+$outputBaseDir = realpath($outputBaseDir);
+
+if (! -d $outputBaseDir ) {
+   mkpath($outputBaseDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputBaseDir\n\t"; 
+}
+
+if ( !length($outputSubDir) ) {
+    $outputSubDir = "DTI";
+}
+
+# for voxbo
+my $userName = `whoami`;
+chomp($userName);
+my $queueName =  $userName . "_pddcm2dt";
+
+
 
 
 # lists of stuff. Subjects is a 1D array, timePoints is 2D
@@ -95,9 +133,9 @@ my (@subjects, @timePoints, %protocols);
 # Process subject list
 if ( -e $subjectList) {
 
-  open SUBJFILE, "<$subjectList" or die "Can't find subject list file $subjectList";
-
-  while (<SUBJFILE>) {
+    open SUBJFILE, "<$subjectList" or die "Can't find subject list file $subjectList";
+    
+    while (<SUBJFILE>) {
 	
 	my $line = $_;
 	
@@ -105,20 +143,20 @@ if ( -e $subjectList) {
 	
 	# Skip blank lines
 	if (scalar(@tokens)) {
-	  my $subject = $tokens[0];   
-	  shift @tokens;
-	  push(@subjects, $subject);
+	    my $subject = $tokens[0];   
+	    shift @tokens;
+	    push(@subjects, $subject);
 	    
-	  @tokens = `ls ${inputBaseDir}/${subject}`;
-	  chomp(@tokens); 
-	  push(@timePoints, [ @tokens ]);
-	  }
-  }
-  close SUBJFILE;
+	    @tokens = `ls ${inputBaseDir}/${subject}`;
+	    chomp(@tokens); 
+	    push(@timePoints, [ @tokens ]);
+	}
+    }
+    close SUBJFILE;
 }
 else {    
-  print "Processing $subjectList as a single subject ID\n";  
-  push(@subjects, $subjectList);
+    print "Processing $subjectList as a single subject ID\n";  
+    push(@subjects, $subjectList);
 }
 
 open PROTOFILE, "<$protocolList" or die "Can't find protocol list file $protocolList";
@@ -132,21 +170,21 @@ while (<PROTOFILE>) {
     # skip blank lines
     if (scalar(@tokens)) {
 
-	    my $protocolName = $tokens[0];
+	my $protocolName = $tokens[0];
 	
-	    if ($tokens[1]) {
-	      $protocols{$protocolName} = $tokens[1];
-	    }
-	    else {
-	      $protocols{$protocolName} = $tokens[0];
-	    }
+	if ($tokens[1]) {
+	    $protocols{$protocolName} = $tokens[1];
+	}
+	else {
+	    $protocols{$protocolName} = $tokens[0];
+	}
     }
 }
 
 close PROTOFILE;
 
 if ($useVoxbo) {
-  `$vbbatch -f $queueName FILE`;
+    `$vbbatch -f $queueName FILE`;
 }
 
 foreach my $subjectCounter (0 .. $#subjects) {
@@ -156,34 +194,31 @@ foreach my $subjectCounter (0 .. $#subjects) {
     # reference to array of time points
     my $subjectTP = $timePoints[$subjectCounter];
     
-    TIMEPOINT: foreach my $timePoint (@$subjectTP) {
+  TIMEPOINT: foreach my $timePoint (@$subjectTP) {
       
       my $foundData = 0;
       
-      my $outputDir = "${inputBaseDir}/${subject}/${timePoint}/${outputSubDir}";
+      my $outputDir = "${outputBaseDir}/${subject}/${timePoint}/${outputSubDir}";
       
       if ( -d "$outputDir" ) {
           print "Output directory $outputDir already exists. Skipping this time point\n";
           next TIMEPOINT;
       }
-      else {
-	      mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
-      }
-      
       
     PROTOCOL: foreach my $protocolName (keys %protocols) {
 	
- 	    my $protocolKey = 0;
+	my $protocolKey = 0;
 	
-	    my $dirContents = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}`;
-       
-	    if ( $dirContents =~ m|(^${subject}_${timePoint}_[0-9]+_${protocolName}.nii.gz)/?|m ) {
-	      $protocolKey = $protocolName;
-	      $foundData = 1;
-	    }
-	    else {
-	      next PROTOCOL;
-	    }
+	my $dirContents = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}`;
+	
+	if ( $dirContents =~ m|(^${subject}_${timePoint}_[0-9]+_${protocolName}.nii.gz)/?|m ) {
+	    $protocolKey = $protocolName;
+	    $foundData = 1;
+	    mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
+	}
+	else {
+	    next PROTOCOL;
+	}
 	
 	print "Found protocol $protocolKey for subject $subject time point $timePoint\n";
 	
@@ -191,21 +226,17 @@ foreach my $subjectCounter (0 .. $#subjects) {
 
 	my $outputFileRoot = "${subject}_${timePoint}_${shortProtocol}_";
 
-	my $schemeFiles = "";
-
-  # Assume repeats have same scheme, grab first one       
-  my @bvalFiles = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.bval | head -n 1`;
-  my @bvecFiles = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.bvec | head -n 1`;  
-           
-  chomp @bvalFiles;
-  chomp @bvecFiles;
+	my @bvalFiles = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.bval`;
+	my @bvecFiles = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.bvec`;  
 	
+	chomp @bvalFiles;
+	chomp @bvecFiles;
 	
-	# Now get
+	# Now get DWI images
 	my @dwiImages = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.nii.gz`;
 	
-  chomp @dwiImages;
-
+	chomp @dwiImages;
+	
 	my $imageString = join(" ", @dwiImages);
 	my $bvalString = join(" ", @bvalFiles);
 	my $bvecString = join(" ", @bvecFiles);
@@ -218,17 +249,17 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	    $job = "$vbbatch -sn $queueName -a $queueName -c \"$cmd\" FILE";
 	}
 	elsif ($useSGE) {
-	    $job = "$qsub -S /bin/bash -o $ENV{'HOME'}/nii2dt_${subject}_${timePoint}_${protocolName}.stdout -e $ENV{'HOME'}/nii2dt_${subject}_${timePoint}_${protocolName}.stderr $cmd";
+	    $job = "$qsub -S /bin/bash -o ${outputDir}/nii2dt_${subject}_${timePoint}_${protocolName}.stdout -e ${outputDir}/nii2dt_${subject}_${timePoint}_${protocolName}.stderr $cmd";
 	    # sleep to avoid qsub issues
-	    `sleep 1`;
-	  }
-	print( "JOB: $job \n");
+	    `sleep 0.5`;
+	}
+# 	print( "JOB: $job \n");
 	system($job);
-  }
+    }
       
-   if (!$foundData) {
-     print "Could not find any data for subject $subject time point $timePoint\n";
-   }
+      if (!$foundData) {
+	  print "Could not find any data for subject $subject time point $timePoint\n";
+      }
       
   }
 }
@@ -236,17 +267,16 @@ foreach my $subjectCounter (0 .. $#subjects) {
     
 # Starts queue, good luck
 if ($useVoxbo) {
-print `$vbbatch -s $queueName`;
-
+    print `$vbbatch -s $queueName`;
 }
 
 
 
 
 sub trim {
-
+    
     my ($string) = @_;
-
+    
     $string =~ s/^\s+//;    
     $string =~ s/\s+$//;
     

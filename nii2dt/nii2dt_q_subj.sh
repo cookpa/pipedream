@@ -1,6 +1,5 @@
 # Wrapper script for sending nii2dt.sh to the queue
 #
-# args: ${NII2DT_DIR} $HOME $BVAL $BVEC $TEMPLATE $TEMPLATE_MASK $OUTPUT_DIR $OUTPUT_FILE_ROOT ${DWI_1} ${DWI_2} ...  ${DWI_N}
 
 NII2DT_DIR=$1
 HOME=$2
