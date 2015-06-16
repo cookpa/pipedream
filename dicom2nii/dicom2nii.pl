@@ -152,7 +152,6 @@ PROTOCOL: foreach my $protocolName (@protocols) {
           next PROTOCOL;
       }
 
-      my $niftiDataFile = $niftiFiles[0];
 
       # Look for warnings in the dicom conversion
       if ($dcm2niiOutput =~ m/Warning:/ || $dcm2niiOutput =~ m/Error/) {
@@ -166,9 +165,14 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
           close FILE;
 
-          next PROTOCOL;
+          # Proceed if a nifti image got produced 
+          if ( scalar(@niftiFiles) == 0 ) {
+            next PROTOCOL;
+          }
       }
 
+      my $niftiDataFile = $niftiFiles[0];
+      
       `mv ${tmpDir}/$niftiDataFile ${outputDir}/${outputFileRoot}.nii`;
       `gzip ${outputDir}/${outputFileRoot}.nii`;
 
