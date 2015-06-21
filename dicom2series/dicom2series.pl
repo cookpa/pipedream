@@ -213,7 +213,7 @@ sub processFile {
     }
 
     if ($anonymize) {
-        my $notOK = system("${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath"); 
+        my $notOK = system("${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath $anonString"); 
         
         if ($notOK) {
             # Die immediately rather than continue with information not removed 
