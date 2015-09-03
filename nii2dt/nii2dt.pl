@@ -273,6 +273,8 @@ system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}md.nii.gz TensorMeanD
 system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rd.nii.gz TensorRadialDiffusion ${outputDir}/${outputFileRoot}dt.nii.gz");
 system("$antsDir/ImageMath 3 ${outputDir}/${outputFileRoot}rgb.nii.gz TensorColor ${outputDir}/${outputFileRoot}dt.nii.gz");
 
+# Copy ref image to output directory
+system("cp $ref ${outputDir}/${outputFileRoot}ref.nii.gz");
 
 # cleanup
 if ($cleanup) {
