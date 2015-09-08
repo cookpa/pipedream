@@ -27,6 +27,7 @@ Usage: dicom2nii.sh <input_base_dir> <subject> <timepoint> <protocol_list> <outp
 
 use strict;
 use FindBin qw($Bin);
+use File::Copy;
 use File::Path;
 use File::Spec;
 
@@ -118,6 +119,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
         $tmpDir = "${tmpBaseDir}/${outputFileRoot}tmp";
       }
 
+      # die if $tmpDir can't be created to avoid possible rm -rf of existing directory 
       mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Can't make working directory $tmpDir\n\t";
 
       my @imageFiles = `ls $seriesDir`;
@@ -133,7 +135,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
           `gunzip -c ${seriesDir}/${inputFile} > ${tmpDir}/$decomp`;
         }
         else {
-          `cp ${seriesDir}/$inputFile ${tmpDir}/$inputFile`;
+          copy("${seriesDir}/$inputFile", "${tmpDir}/$inputFile");
         }
       }
     
@@ -141,7 +143,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
       
       my $tmpIni = "${tmpDir}/dcm2nii.ini";
 
-      `cp ${Bin}/../config/dcm2nii.ini $tmpIni`;
+      copy("${Bin}/../config/dcm2nii.ini", "$tmpIni");
 
       my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b $tmpIni -r n -a n -d n -e y -f y -g n -i n -n y -p y $tmpDir`;
 
@@ -172,9 +174,12 @@ PROTOCOL: foreach my $protocolName (@protocols) {
       }
 
       my $niftiDataFile = $niftiFiles[0];
-      
-      `mv ${tmpDir}/$niftiDataFile ${outputDir}/${outputFileRoot}.nii`;
-      `gzip ${outputDir}/${outputFileRoot}.nii`;
+     
+      # Optionally gzip with higher compression than standard here. Slower, but
+      # may be worthwhile for large data sets
+      `gzip "${tmpDir}/$niftiDataFile"`;
+ 
+      copy("${tmpDir}/${niftiDataFile}.gz", "${outputDir}/${outputFileRoot}.nii.gz");
 
       # Copy DTI gradient info
 
@@ -187,8 +192,8 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
         $bvalFile =~ s/\.bvec/\.bval/;
 
-        `mv ${tmpDir}/$bvecFile ${outputDir}/${outputFileRoot}.bvec`;
-        `mv ${tmpDir}/$bvalFile ${outputDir}/${outputFileRoot}.bval`; 
+        copy("${tmpDir}/$bvecFile", "${outputDir}/${outputFileRoot}.bvec");
+        copy("${tmpDir}/$bvalFile", "${outputDir}/${outputFileRoot}.bval"); 
       }
 
       `rm -rf $tmpDir`;
