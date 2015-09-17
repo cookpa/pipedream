@@ -223,7 +223,17 @@ else {
     die "Unrecognized target image type $distCorrTargetImageType, valid choices are 'b0' or 'dwi'";
 }
 
+# Check ref image successfully created
+if ( ! -f $ref ) {
+  die "\n  Could not create reference image\n $ref \n for motion correction \n";
+}
+
 system("${antsDir}/antsMotionCorr -d 3 -m MI[${ref},${uncorrectedDWI}, 1, 32, Regular, 0.125] -u 1 -t Affine[0.2] -i 25 -e 1 -f 1 -s 0 -o [${outputDir}/${outputFileRoot}, ${outputDWI}]");
+
+# Check moco image successfully created
+if ( ! -f $outputDWI ) {
+  die "\n  Could not create motion-corrected DWI image \n $outputDWI \n";
+}
 
 # Compute corrected average DWI and B0
 system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}averageB0.nii.gz -minbval 0 -maxbval 0 -schemefile $masterScheme");

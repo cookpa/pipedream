@@ -157,6 +157,11 @@ if ( -e $subjectList) {
 else {    
     print "Processing $subjectList as a single subject ID\n";  
     push(@subjects, $subjectList);
+
+    my @tokens = `ls ${inputBaseDir}/${subjectList}`;
+    chomp(@tokens); 
+    push(@timePoints, [ @tokens ]);
+    
 }
 
 open PROTOFILE, "<$protocolList" or die "Can't find protocol list file $protocolList";
@@ -214,7 +219,6 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	if ( $dirContents =~ m|(^${subject}_${timePoint}_[0-9]+_${protocolName}.nii.gz)/?|m ) {
 	    $protocolKey = $protocolName;
 	    $foundData = 1;
-	    mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Cannot create output directory $outputDir\n\t";
 	}
 	else {
 	    next PROTOCOL;
@@ -236,13 +240,26 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	my @dwiImages = `ls ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir}/${subject}_${timePoint}_[0-9]*_${protocolName}.nii.gz`;
 	
 	chomp @dwiImages;
+
+	# Don't submit job if bvecs or bvals are missing
+	if ( scalar(@bvalFiles) != scalar(@bvecFiles) ) {
+	    print STDERR "Missing bval or bvec file in ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir} for protocol ${protocolName}\n";
+	    next PROTOCOL;
+	}
+	if ( scalar(@bvalFiles) != scalar(@dwiImages) ) {
+	    print STDERR "Number of bvals does not match number of images in ${inputBaseDir}/${subject}/${timePoint}/${inputSubDir} for protocol ${protocolName}\n";
+	    next PROTOCOL;
+	}
+
+	# Make output dir so that SGE can put logs there
+	mkpath($outputDir, {verbose => 0, mode => 0755});
 	
 	my $imageString = join(" ", @dwiImages);
 	my $bvalString = join(" ", @bvalFiles);
 	my $bvecString = join(" ", @bvecFiles);
 
 	my $cmd = "${Bin}/nii2dt_q_subj.sh ${Bin} $ENV{'HOME'} --dwi $imageString --bvals $bvalString --bvecs $bvecString --outdir $outputDir --outroot $outputFileRoot";
-	
+
 	my $job = $cmd;
 
 	if ($useVoxbo) { 
