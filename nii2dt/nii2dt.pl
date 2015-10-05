@@ -5,18 +5,40 @@
 #
 
 my $usage = qq{
-Usage: nii2dt --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --correction-target [b0 | dwi | mean]  --outroot outroot --outdir outdir
+Usage: nii2dt --dwi dwi1.nii.gz dwi2.nii.gz --bvals bvals1 bvals2 --bvecs bvecs1 bvecs2 --outroot outroot --outdir outdir [options] 
 
-  <outdir> - Output directory.
+  Required:
 
-  <outroot> - Root of output, eg subject_TP1_dti_ . Prepended onto output files and directories in
-    <outdir>. This should be unique enough to avoid any possible conflict within your data set.
+  --bvals : FSL bvals file(s) corresponding to the DWI image(s).
 
-  <dwi_1> - 4D NIFTI image containing DWI data. Optionally, this may be followed by other images and bvals / bvecs 
-  containing repeat scans; the combined data will be used to fit the diffusion tensor.
+  --bvecs : FSL bvecs file(s) corresponding to the DWI image(s). 
+  
+  --dwi : 4D NIFTI image(s) containing DWI data. Must be accompanied by bvals and bvecs. Optionally, 
+  specify multiple images and bvals / bvecs in the same order, the combined data will be used to fit 
+  the diffusion tensor.
+ 
+  --outdir : Output directory.
 
-  Distortion / motion correction is to the average b=0 image by default; set --correction-target dwi to use
-  the median DWI image or mean to use the mean of all data (the old default).
+  --outroot : Root of output, eg subject_TP1_dti_ . Prepended onto output files and directories in
+    outdir. This should be unique enough to avoid any possible conflict within your data set.
+ 
+
+  Optional:
+
+  --correction-target = b0 : Distortion / motion correction target image type.
+
+  Values:  b0 - the average b=0 image (default), see below to substitute approximately unweighted images 
+                with b > 0.
+
+           dwi - The median DWI image. Computes the median value of DWI images between b=500 and b=1500. 
+
+           mean - the mean of all the data. This can lead to a low-contrast image depending on the imaging 
+                  scheme. This option is provided for for backwards compatibility.
+
+  --unweighted-bval = 0 : Used to define the effective "b=0" image. Some protocols use a small b-value
+  instead of 0 (usually 5 to 50 s / mm^2) to improve accuracy of the estimated signal at b=0.
+  Specify a maximum b-value to use as a b0 image: all volumes with a b-value equal or less than this will
+  be averaged and used as a motion correction target if the correction target option is "b0".
 
 };
 
@@ -34,6 +56,7 @@ my $outputFileRoot = "";
 my $outputDir = "";
 my $verbose = 0;
 my $distCorrTargetImageType = "b0";
+my $effectiveB0 = 0;
 
 if ($#ARGV < 0) {
     print $usage;
@@ -48,7 +71,8 @@ GetOptions ("dwi=s{1,1000}" => \@dwiImages,    # string
 	    "outdir=s" => \$outputDir,
 	    "outroot=s" => \$outputFileRoot,
 	    "verbose"  => \$verbose,
-	    "correction-target=s" => \$distCorrTargetImageType )   # flag
+	    "correction-target=s" => \$distCorrTargetImageType,
+            "unweighted-bval=f" => \$effectiveB0 )
     or die("Error in command line arguments\n");
 
 # Convert string options to lower case 
@@ -196,7 +220,7 @@ my $uncorrectedDWI = "${tmpDir}/${outputFileRoot}dwi.nii.gz";
 
 system("cp $dwiImages[0] $uncorrectedDWI");
 if ( scalar(@dwiImages) > 1 ) {
-    print( "Merging acquistions for motion correction \n");
+    print( "Merging volumes for motion correction \n");
     for ( my $i = 1; $i < scalar(@dwiImages); $i += 1) {
 	system("${antsDir}/ImageMath 4 $uncorrectedDWI stack $uncorrectedDWI $dwiImages[$i]");
     }
@@ -207,7 +231,7 @@ my $ref = "${tmpDir}/${outputFileRoot}ref.nii.gz";
 if ($distCorrTargetImageType eq "b0") {
     print " Using average b=0 for distortion / motion correction \n";
 
-    system("${caminoDir}/averagedwi -inputfile $uncorrectedDWI -outputfile $ref -minbval 0 -maxbval 0 -schemefile $masterScheme");
+    system("${caminoDir}/averagedwi -inputfile $uncorrectedDWI -outputfile $ref -minbval 0 -maxbval $effectiveB0 -schemefile $masterScheme");
 }
 elsif ($distCorrTargetImageType eq "dwi") {
     print " Using median DWI for distortion / motion correction \n";
@@ -236,7 +260,7 @@ if ( ! -f $outputDWI ) {
 }
 
 # Compute corrected average DWI and B0
-system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}averageB0.nii.gz -minbval 0 -maxbval 0 -schemefile $masterScheme");
+system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}averageB0.nii.gz -minbval $effectiveB0 -maxbval $effectiveB0 -schemefile $masterScheme");
 
 system("${caminoDir}/averagedwi -inputfile $outputDWI -outputfile ${outputDir}/${outputFileRoot}averageDWI.nii.gz -minbval 500 -maxbval 1500 -schemefile $masterScheme");
 

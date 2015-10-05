@@ -258,7 +258,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
 	my $bvalString = join(" ", @bvalFiles);
 	my $bvecString = join(" ", @bvecFiles);
 
-	my $cmd = "${Bin}/nii2dt_q_subj.sh ${Bin} $ENV{'HOME'} --dwi $imageString --bvals $bvalString --bvecs $bvecString --outdir $outputDir --outroot $outputFileRoot";
+	my $cmd = "${Bin}/nii2dt_q_subj.sh ${Bin} $ENV{'HOME'} --dwi $imageString --bvals $bvalString --bvecs $bvecString --outdir $outputDir --outroot $outputFileRoot --unweighted-bval 50";
 
 	my $job = $cmd;
 
