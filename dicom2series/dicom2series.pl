@@ -290,7 +290,8 @@ sub getFileInfo {
 
     $studyDate = "${studyDate}_$1";
 
-    $header =~ m/\s*\(0020,0011\) (?:\?\? \()?IS\)? \[(\d+)/ or return @missingInfo;
+    # Sometimes series number contains spaces, eg you have [ 1] through [ 9] and then [10]
+    $header =~ m/\s*\(0020,0011\) (?:\?\? \()?IS\)? \[\s*(\d+)/ or return @missingInfo;
 
     my $seriesNumber = $1;
 
@@ -379,7 +380,7 @@ sub getFileInfo {
         my $seriesDate = "";
         my $seriesTime = "";
         
-        if ( $header =~ m/\s*\(0020,0013\) (?:\?\? \()?IS\)? \[(\d+)/ ) {
+        if ( $header =~ m/\s*\(0020,0013\) (?:\?\? \()?IS\)? \[\w*(\d+)/ ) {
             $instanceNumber = $1;
             $instanceNumber = sprintf("%.4d", $instanceNumber);
         }
