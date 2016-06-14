@@ -9,44 +9,45 @@
 #
 # Not all dependencies are required at all stages of processing. 
 #
-# For more details on how to obtain / build these programs, see the PipeDream
-# documentation.
 
-# Paths to software should end in a slash eg ANTSPATH=/path/to/ants/
+# Fill in the variables below with the full path to the binaries
 
 # ====== DICOM TOOLS =======
 #
 # dcm2nii is part of mricron by Chris Rorden
 # http://www.nitrc.org/projects/mricron
 #
-export DCM2NIIPATH="/home/pcook/grosspeople/research/mricron/"
+# Directory where dcm2nii lives
+export DCM2NIIPATH=""
 #
 # GDCM (Grassroots DiCoM) is a C++ library for DICOM medical files
 # http://sourceforge.net/projects/gdcm/
 #
-export GDCMPATH="/home/pcook/grosspeople/research/gdcm/bin/"
+# Directory where gdcmdump etc live
 #
-# Path to XML files needed by GDCM
-export GDCM_RESOURCES_PATH="/home/pcook/grosspeople/research/gdcm/Source/InformationObjectDefinition/"
+export GDCMPATH=""
+#
+# Path to directory containing XML files needed by GDCM (Part3.xml etc). Usually in gdcm/Source/InformationObjectDefinition
+export GDCM_RESOURCES_PATH=""
 
 
 # ====== IMAGE PROCESSING TOOLS ======
 #
-# ANTS contains advanced tools for image registration and segmentation. It's used in almost 
-# every part of PipeDream
+# ANTS contains advanced tools for image registration and segmentation. 
+# 
+# http://stnava.github.io/ANTs/
 #
-# http://www.picsl.upenn.edu/ANTS/
-#
-export ANTSPATH="/home/pcook/grosspeople/research/ants_r1098/"
+# ANTSPATH must end with a trailing /
+export ANTSPATH=""
 #
 # Camino is a diffusion imaging toolkit
 # 
 # http://camino.org.uk
 #
-export CAMINOPATH="/home/pcook/grosspeople/research/camino/bin/"
+export CAMINOPATH=""
 #
 # Java is required by Camino
-export JAVAPATH="/usr/java/latest/bin/"
+export JAVAPATH=""
 #
 # Control maximum memory usage by Camino, in Mb
 export CAMINO_HEAP_SIZE=1100
@@ -60,11 +61,13 @@ export CAMINO_HEAP_SIZE=1100
 # To avoid overloading cluster machines with multiple threads, set this to 1
 # 
 # Increasing this number will let ITK use more threads, which can make
-# processing much faster
+# processing faster
 export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
 
 
 # === PARALLEL PROCESSING OPTIONS ===
+#
+# For SGE users
 #
 # The qsub commmand that will be invoked by pipedream. Include path information and
 # options such as -q that may be necessary. Beware that some options, like -o or -S,
@@ -79,18 +82,17 @@ export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
 #
 # -v   Pass environment variable to the job.
 #
-# -V   Pass current environment (all variables) to the job. You should keep this to 
-#      ensure that variables defined in this file get sent to the job.
+# -V   Pass current environment (all variables) to the job.
 #
 # See the man page for qsub for more detail.
 #
-export PIPEDREAMQSUB="qsub -pe serial 2 -V "
+export PIPEDREAMQSUB="qsub"
 #
+# For Voxbo users
 #
 # The Voxbo vbbatch commmand that will be invoked by pipedream. Include path information 
 # and options that may be necessary.
 #
-export PIPEDREAMVBBATCH="vbbatch"
-
+PIPEDREAMVBBATCH="vbbatch"
 
 return 0

@@ -145,7 +145,15 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
       copy("${Bin}/../config/dcm2nii.ini", "$tmpIni");
 
-      my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b $tmpIni -r n -a n -d n -e y -f y -g n -i n -n y -p y $tmpDir`;
+      my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b $tmpIni $tmpDir`;
+
+      my $dcm2niiOutputFile = "${outputDir}/${outputFileRoot}_dcm2niiOutput.txt";
+
+      open FILE, ">${dcm2niiOutputFile}";
+
+      print FILE "${dcm2niiOutput}\n";
+
+      close FILE;
 
       my @niftiFiles = $dcm2niiOutput =~ m/->(.*\.nii)/g;
 
