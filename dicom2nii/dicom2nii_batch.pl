@@ -153,7 +153,11 @@ foreach my $subjectCounter (0 .. $#subjects) {
     # Possible we can avoid this by having each job make its own copy of the ini file. Disable delay for now
     #
     my $delay = 0;
-  
+
+    if (! -d $tpOutputDir ) {
+	mkpath($tpOutputDir, {verbose => 0, mode => 0755}) or die "Can't make output directory $tpOutputDir\n\t";
+    }
+    
     my $cmd = "${Bin}/dicom2nii_q_subj.sh ${Bin} ${inputBaseDir} ${subject} ${timePoint} ${protocolList} ${tpOutputDir} $ENV{'HOME'} $delay";
 
     my $job = $cmd;
@@ -162,7 +166,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
       $job = "$vbbatch -sn $queueName -a $queueName -c \"$cmd\" FILE";
     }
     elsif ($useSGE) {
-      $job = "$qsub -S /bin/bash $cmd";
+      $job = "$qsub -S /bin/bash -j y -o ${tpOutputDir}/dicom2nii.stdout $cmd";
       # sleep to avoid qsub issues
       `sleep 0.5`;
     }
