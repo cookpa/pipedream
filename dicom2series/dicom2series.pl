@@ -25,6 +25,9 @@ my $usage = qq {
       Private fields cannot be altered by gdcmanon. Some PACS systems will copy patient information into private fields where
       they can't be touched. Always check the output to ensure that the required fields were removed successfully.
 
+      gdcmanon will return an error if it cannot empty a field because it does not exist. Therefore the default list in
+      pipedream/config/dicomFieldsToEmpty.txt is pretty minimal.
+
     <rename_files> - 1 if you want to rename files (if possible) in the output directory, 0 otherwise.
 
     <dicom_directory> - A directory that will be searched recursively for dicom files.
