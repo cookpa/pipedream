@@ -87,7 +87,7 @@ if ($anonymize) {
       }
    }
 
-    print "  Emptying the following dicom fields: \n\t" . join("\n\t", @fields) . "\n\n";
+    print "  anon string \n $anonString \n\n Emptying the following dicom fields: \n\t" . join("\n\t", @fields) . "\n\n";
      
 } 
 
@@ -213,11 +213,16 @@ sub processFile {
     }
 
     if ($anonymize) {
-        my $notOK = system("${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath $anonString"); 
+
+	my $anonCmd = "${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath $anonString";
+
+        system($anonCmd); 
         
+        my $notOK = $? >> 8;
+
         if ($notOK) {
             # Die immediately rather than continue with information not removed 
-            die "gdcmanon returned non-zero exit code - fields may not have been correctly emptied\n";
+            die "gdcmanon returned non-zero exit code $notOK - fields may not have been correctly emptied. Call to gdcmanon was:\n$anonCmd\n";
         }
     }
     else {
@@ -367,7 +372,7 @@ sub getFileInfo {
     }
     
     my $newFileName = $fileBaseName . $fileExtension;
-    
+
     if ( $renameFiles ) {
 
 	# Rename to SOP UID - makes for ugly file names but anything nicer risks non-uniqueness
@@ -389,6 +394,18 @@ sub getFileInfo {
 	if ( $fileExtension =~ m/gz/i ) {
 	    $newFileName = $newFileName . $fileExtension;
 	}
+    }
+    else {
+	# Remove special characters that can mess up unix
+	#
+	# replace common separators with underscore. Everything else goes away
+	$newFileName =~ s/[,\s-]+/_/g;
+	
+	# replace anything not a word character (includes _) or a period
+	$newFileName =~ s/[^\.\w]//g;
+
+	# Finally, clear up multiple underscores
+	$newFileName =~ s/_+/_/g;
     }
 
     return (${isDicom}, 0, ${studyDate}, ${seriesDir}, ${newFileName});
