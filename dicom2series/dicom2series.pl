@@ -25,7 +25,7 @@ my $usage = qq {
       Private fields cannot be altered by gdcmanon. Some PACS systems will copy patient information into private fields where
       they can't be touched. Always check the output to ensure that the required fields were removed successfully.
 
-    <rename_files> - 1 if you want to rename files (if possible) in the output directory, 0 otherwise.
+    <rename_files> - 1 if you want to rename files in the output directory, 0 otherwise.
 
     <dicom_directory> - A directory that will be searched recursively for dicom files.
 
@@ -370,61 +370,26 @@ sub getFileInfo {
     
     if ( $renameFiles ) {
 
-        # Need some extra information to rename files
+	# Rename to SOP UID - makes for ugly file names but anything nicer risks non-uniqueness
 
-        # Name files {instance number}_{series number}_{protocol name}_{series date}_{series time}[.gz if data compressed]
-        # 
-        # vbrename does {instance number}_{series date}_{series time} - 
-        # 
-        my $instanceNumber = "";
-        my $seriesDate = "";
-        my $seriesTime = "";
-        
-        if ( $header =~ m/\s*\(0020,0013\) (?:\?\? \()?IS\)? \[\w*(\d+)/ ) {
-            $instanceNumber = $1;
-            $instanceNumber = sprintf("%.4d", $instanceNumber);
-        }
-        else {
-            print "Can't rename file - missing data in field (0020,0013)\n";
-            return (0, 0, 0, 0, 0); 
-        }
-    
-        if ( $header =~ m/\s*\(0008,0021\) (?:\?\? \()?DA\)? \[(\d+)/ ) {
-            $seriesDate = $1;
-        }
-        else {
-            print "Can't rename file - missing data in field (008,0021)\n";
-            return (0, 0, 0, 0, 0); 
+	my $sopUID = "";
+
+        if ( $header =~ m/\s*\(0008,0018\) UI \[([0-9.]+)/ ) {
+            $sopUID = $1;
         }
 
-        if ( $header =~ m/\s*\(0008,0031\) (?:\?\? \()?TM\)? \[([0-9.]+)/ ) {
-            $seriesTime = $1;
+        if (!$sopUID) {
+            print "Can't rename file - missing data in field (0008,0018)\n";
+            return @missingInfo; 
         }
-        else {
-            print "Can't rename file - missing data in field (008,0031)\n";
-            return (0, 0, 0, 0, 0); 
-        }
-        
 
-	$newFileName = join('_', $instanceNumber, $seriesNumber, $protocolName, $seriesDate, $seriesTime);
+	$newFileName = $sopUID . ".dcm";
 
 	# Preserve file extension if it indicates compression
 	if ( $fileExtension =~ m/gz/i ) {
 	    $newFileName = $newFileName . $fileExtension;
 	}
     }
-
-    # Remove special characters that can mess up unix
-    #
-    # \s and , -> underscore. Allow dashes. Everything else goes away
-    $newFileName =~ s/[,\s-]+/_/g;
-
-    # Begone, you demons of stupid file naming!
-    $newFileName =~ s/[^\.\w]//g;
-
-
-    # Finally, clear up multiple underscores
-    $newFileName =~ s/_+/_/g;
 
     return (${isDicom}, 0, ${studyDate}, ${seriesDir}, ${newFileName});
     

@@ -1,22 +1,68 @@
-# List of fields to optionally be emptied by dicom2series 
-# You can add fields by appending additional lines,
-#
-# (number,number)  # optional comment describing what the field is
-#
-(0008,0050)  # 8,1 Accession Number
-(0008,0080)  # 6,1 Institution Name
-(0008,0081)  # 44,1 Institution Address
-(0008,0090)  # 22,1 Referring Physician's Name
-(0008,1010)  # 10,1 Station Name
-(0008,1048)  # 22,1-n Physician(s) of Record
-(0008,1070)  # 2,1-n Operators' Name
-(0010,0010)  # 12,1 Patient's Name
-(0010,0020)  # 8,1 Patient ID
-(0010,0030)  # 8,1 Patient's Birth Date
-(0010,0040)  # 2,1 Patient's Sex
-(0010,1010)  # 4,1 Patient's Age
-(0010,1040)  # 36,1 Patient's Address
-(0010,1020)  # 10,1 Patient's Size
-(0010,1030)  # 14,1 Patient's Weight
-(0018,1000)  # 6,1 Device Serial Number
-
+(0008,0050)	# AccessionNumber
+(0008,0090)	# ReferringPhysicianName
+(0008,0092)	# ReferringPhysicianAddress
+(0008,0094)	# ReferringPhysicianTelephoneNumbers
+(0008,0096)	# ReferringPhysicianIdentificationSequence
+(0008,009C)	# ConsultingPhysicianName
+(0008,009D)	# ConsultingPhysicianIdentificationSequence
+(0008,1048)	# PhysiciansOfRecord
+(0008,1049)	# PhysiciansOfRecordIdentificationSequence
+(0008,1050)	# PerformingPhysicianName
+(0008,1052)	# PerformingPhysicianIdentificationSequence
+(0008,1060)	# NameOfPhysiciansReadingStudy
+(0008,1062)	# PhysiciansReadingStudyIdentificationSequence
+(0008,1080)	# AdmittingDiagnosesDescription
+(0010,0010)	# PatientName
+(0010,0020)	# PatientID
+(0010,1030)	# PatientWeight
+(0010,0021)	# IssuerOfPatientID
+(0010,0030)	# PatientBirthDate
+(0010,0032)	# PatientBirthTime
+(0010,0033)	# PatientBirthDateInAlternativeCalendar
+(0010,0034)	# PatientDeathDateInAlternativeCalendar
+(0010,0050)	# PatientInsurancePlanCodeSequence
+(0010,0101)	# PatientPrimaryLanguageCodeSequence
+(0010,1000)	# OtherPatientIDs
+(0010,1001)	# OtherPatientNames
+(0010,1002)	# OtherPatientIDsSequence
+(0010,1005)	# PatientBirthName
+(0010,1010)	# PatientAge
+(0010,1020)	# PatientSize
+(0010,1021)	# PatientSizeCodeSequence
+(0010,1040)	# PatientAddress
+(0010,1050)	# InsurancePlanIdentification
+(0010,1060)	# PatientMotherBirthName
+(0010,1080)	# MilitaryRank
+(0010,1081)	# BranchOfService
+(0010,1090)	# MedicalRecordLocator
+(0010,1100)	# ReferencedPatientPhotoSequence
+(0010,2000)	# MedicalAlerts
+(0010,2110)	# Allergies
+(0010,2150)	# CountryOfResidence
+(0010,2152)	# RegionOfResidence
+(0010,2154)	# PatientTelephoneNumbers
+(0010,2155)	# PatientTelecomInformation
+(0010,2160)	# EthnicGroup
+(0010,2180)	# Occupation
+(0010,21a0)	# SmokingStatus
+(0010,21b0)	# AdditionalPatientHistory
+(0010,21c0)	# PregnancyStatus
+(0010,21d0)	# LastMenstrualDate
+(0010,21f0)	# PatientReligiousPreference
+(0010,2203)	# PatientSexNeutered
+(0010,2297)	# ResponsiblePerson
+(0010,2298)	# ResponsiblePersonRole
+(0010,2299)	# ResponsibleOrganization
+(0010,4000)	# PatientComments
+(0032,1030)	# ReasonForStudy
+(0032,1031)	# RequestingPhysicianIdentificationSequence
+(0032,1032)	# RequestingPhysician
+(0038,0050)	# SpecialNeeds
+(0038,0300)	# CurrentPatientLocation
+(0038,0500)	# PatientState
+(0038,0100)	# PertinentDocumentsSequence
+(0040,0006)	# ScheduledPerformingPhysicianName
+(0040,000B)	# ScheduledPerformingPhysicianIdentificationSequence
+(4008,0114)	# PhysicianApprovingInterpretation
+(0040,3001)	# ConfidentialityConstraintOnPatientDataDescription
+(0040,1400)	# RequestedProcedureComments
