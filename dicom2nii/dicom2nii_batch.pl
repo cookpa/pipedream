@@ -88,7 +88,7 @@ $outputBaseDir = realpath($outputBaseDir);
 $protocolList = realpath($protocolList);
 
 if ( ! -d $outputBaseDir ) { 
-    mkpath($outputBaseDir, {verbose => 0, mode => 0755}) or die "ERROR: Can't create output directory $outputBaseDir\n\t";
+    mkpath($outputBaseDir, {verbose => 0, mode => 0775}) or die "ERROR: Can't create output directory $outputBaseDir\n\t";
 }
 
 # Loop over all subjects and time points in the usual way, submit jorbs
@@ -155,7 +155,7 @@ foreach my $subjectCounter (0 .. $#subjects) {
     my $delay = 0;
 
     if (! -d $tpOutputDir ) {
-	mkpath($tpOutputDir, {verbose => 0, mode => 0755}) or die "Can't make output directory $tpOutputDir\n\t";
+	mkpath($tpOutputDir, {verbose => 0, mode => 0775}) or die "Can't make output directory $tpOutputDir\n\t";
     }
     
     my $cmd = "${Bin}/dicom2nii_q_subj.sh ${Bin} ${inputBaseDir} ${subject} ${timePoint} ${protocolList} ${tpOutputDir} $ENV{'HOME'} $delay";

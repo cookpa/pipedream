@@ -58,7 +58,7 @@ else {
 # done with args
 
 if (! -d $outputDir ) {
-    mkpath($outputDir, {verbose => 0, mode => 0755}) or die "Can't make output directory $outputDir\n\t";
+    mkpath($outputDir, {verbose => 0, mode => 0775}) or die "Can't make output directory $outputDir\n\t";
 }
 
 open PROTOFILE, "<$protocolFile" or die "Can't find protocol list file $protocolFile";
@@ -95,11 +95,11 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
     chomp $subdir;
 
-    if ( -d "${inputBaseDir}/${subject}/${timepoint}/${subdir}" && $subdir =~ m|^([0-9]+_${protocolName})/?$|m) {
+    if ( -d "${inputBaseDir}/${subject}/${timepoint}/${subdir}" && $subdir =~ m|^([0-9]+_${protocolName})/?$|m || $subdir =~ m|^(${protocolName})/?$|m) {
 
       $foundProtocol = 1;
 
-      # Includes number
+      # Includes number if present
       my $seriesName = $1;
       
       my $outputFileRoot = "${subject}_${timepoint}_${seriesName}";
@@ -109,7 +109,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
         next SUBDIR; # Next subdir, might be others matching this protocol
       }
 
-      print "Transfering DICOM files for scan ${seriesName}\n";
+      print "Transferring DICOM files for scan ${seriesName}\n";
      
       my $seriesDir = "${inputBaseDir}/${subject}/${timepoint}/${seriesName}";
 
@@ -120,7 +120,7 @@ PROTOCOL: foreach my $protocolName (@protocols) {
       }
 
       # die if $tmpDir can't be created to avoid possible rm -rf of existing directory 
-      mkpath($tmpDir, {verbose => 0, mode => 0755}) or die "Can't make working directory $tmpDir\n\t";
+      mkpath($tmpDir, {verbose => 0, mode => 0775}) or die "Can't make working directory $tmpDir\n\t";
 
       my @imageFiles = `ls $seriesDir`;
 
@@ -145,23 +145,20 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
       copy("${Bin}/../config/dcm2nii.ini", "$tmpIni");
 
-      my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b $tmpIni $tmpDir`;
-
-      my $dcm2niiOutputFile = "${outputDir}/${outputFileRoot}_dcm2niiOutput.txt";
-
-      open FILE, ">${dcm2niiOutputFile}";
-
-      print FILE "${dcm2niiOutput}\n";
-
-      close FILE;
+      my $dcm2niiOutput = `${dcm2niiDir}/dcm2nii -b $tmpIni $tmpDir`
 
       my @niftiFiles = $dcm2niiOutput =~ m/->(.*\.nii)/g;
 
-      if (scalar(@niftiFiles) > 1) {
-          print "\nWARNING: Cannot process this series because multiple nii files were produced: @niftiFiles \n";
-          next PROTOCOL;
-      }
+      my $multipleNiftiFiles = 0;
 
+      if (scalar(@niftiFiles) > 1) {
+          print "\nWARNING: Multiple nii files for $seriesName \n";
+          $multipleNiftiFiles = 1;
+      }
+      if (scalar(@niftiFiles) == 0) {
+          print "\nERROR: Cannot process $seriesName because no nii file was produced \n";
+          next SUBDIR;
+      }
 
       # Look for warnings in the dicom conversion
       if ($dcm2niiOutput =~ m/Warning:/ || $dcm2niiOutput =~ m/Error/) {
@@ -177,33 +174,43 @@ PROTOCOL: foreach my $protocolName (@protocols) {
 
           # Proceed if a nifti image got produced 
           if ( scalar(@niftiFiles) == 0 ) {
-            next PROTOCOL;
+            next SUBDIR;
           }
       }
 
-      my $niftiDataFile = $niftiFiles[0];
-     
-      # Optionally gzip with higher compression than standard here. Slower, but
-      # may be worthwhile for large data sets
-      `gzip "${tmpDir}/$niftiDataFile"`;
- 
-      copy("${tmpDir}/${niftiDataFile}.gz", "${outputDir}/${outputFileRoot}.nii.gz");
+      for (my $niiCounter = 0; $niiCounter < scalar(@niftiFiles); $niiCounter++) {
 
-      # Copy DTI gradient info
+	  my $niftiDataFile = $niftiFiles[$niiCounter];
+	  
+	  # Optionally gzip with higher compression than standard here. Slower, but
+	  # may be worthwhile for large data sets
+	  `gzip "${tmpDir}/$niftiDataFile"`;
 
-      my $bvecFile = $niftiDataFile;
+	  my $seriesOutputRoot = "${outputDir}/${outputFileRoot}";
 
-      $bvecFile =~ s/\.nii/\.bvec/;
-
-      if (-f "${tmpDir}/$bvecFile") {
-        my $bvalFile = $bvecFile;
-
-        $bvalFile =~ s/\.bvec/\.bval/;
-
-        copy("${tmpDir}/$bvecFile", "${outputDir}/${outputFileRoot}.bvec");
-        copy("${tmpDir}/$bvalFile", "${outputDir}/${outputFileRoot}.bval"); 
+	  if ($multipleNiftiFiles) {
+	      $seriesOutputRoot = sprintf("${outputDir}/${outputFileRoot}_%04d", $niiCounter + 1);
+	  }
+	  
+	  copy("${tmpDir}/${niftiDataFile}.gz", "${seriesOutputRoot}.nii.gz");
+	  
+	  # Copy DTI gradient info
+	  
+	  my $bvecFile = $niftiDataFile;
+	  
+	  $bvecFile =~ s/\.nii/\.bvec/;
+	  
+	  if (-f "${tmpDir}/$bvecFile") {
+	      my $bvalFile = $bvecFile;
+	      
+	      $bvalFile =~ s/\.bvec/\.bval/;
+	      
+	      copy("${tmpDir}/$bvecFile", "${seriesOutputRoot}.bvec");
+	      copy("${tmpDir}/$bvalFile", "${seriesOutputRoot}.bval"); 
+	  }
+	  
       }
-
+	  
       `rm -rf $tmpDir`;
       
     }

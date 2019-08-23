@@ -95,7 +95,7 @@ $inputBaseDir = realpath($inputBaseDir);
 $outputBaseDir = realpath($outputBaseDir);
 
 if ( ! -d $outputBaseDir ) { 
-    mkpath($outputBaseDir, {verbose => 0, mode => 0755}) or die "Can't create output directory $outputBaseDir\n\t";
+    mkpath($outputBaseDir, {verbose => 0, mode => 0775}) or die "Can't create output directory $outputBaseDir\n\t";
 }
 
 

@@ -87,7 +87,7 @@ if ($anonymize) {
       }
    }
 
-    print "  Emptying the following dicom fields: \n\t" . join("\n\t", @fields) . "\n\n";
+    print "  anon string \n $anonString \n\n Emptying the following dicom fields: \n\t" . join("\n\t", @fields) . "\n\n";
      
 } 
 
@@ -213,11 +213,14 @@ sub processFile {
     }
 
     if ($anonymize) {
-        my $notOK = system("${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath $anonString"); 
+
+	my $anonCmd = "${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath $anonString";
+
+        my $notOK = system($anonCmd); 
         
         if ($notOK) {
             # Die immediately rather than continue with information not removed 
-            die "gdcmanon returned non-zero exit code - fields may not have been correctly emptied\n";
+            die "gdcmanon returned non-zero exit code $notOK - fields may not have been correctly emptied. Call to gdcmanon was:\n$anonCmd\n";
         }
     }
     else {
