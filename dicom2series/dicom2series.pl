@@ -19,8 +19,10 @@ my $usage = qq {
  
     <empty_fields> - 1 if you want to empty certain fields the output, 0 otherwise. If 1, fields listed in the config file
       pipedream/config/dicomFieldsToEmpty.txt will be emptied in the output. The input is unchanged. This option is deliberately
-      not named "anonymize" because there are multiple definitions of what it means to anonymize a dicom header. You should check
-      the config file and add fields that should be removed in order to protect subject confidentiality. 
+      not named "anonymize" because there are multiple definitions of what it means to anonymize a dicom header.
+
+      gdcmanon will return a non-zero exit code if it cannot empty a field because it does not exist. Therefore, the default
+      list of fields to empty is fairly minimal. Do not rely on this script to de-identify data. 
 
       Private fields cannot be altered by gdcmanon. Some PACS systems will copy patient information into private fields where
       they can't be touched. Always check the output to ensure that the required fields were removed successfully.
@@ -216,13 +218,15 @@ sub processFile {
 
 	my $anonCmd = "${gdcmDir}/gdcmanon -i \"$dicomFile\" -o $newFileWithPath $anonString";
 
-        system($anonCmd); 
-        
-        my $notOK = $? >> 8;
-
-        if ($notOK) {
-            # Die immediately rather than continue with information not removed 
-            die "gdcmanon returned non-zero exit code $notOK - fields may not have been correctly emptied. Call to gdcmanon was:\n$anonCmd\n";
+        system($anonCmd) == 0 or do {
+          if ($? == -1) {
+            die "failed to execute: $!\n";
+          } 
+          else {
+              # Die immediately rather than continue with information not removed 
+              my $anonExit = $? >> 8;
+              die "gdcmanon returned non-zero exit code $anonExit - fields may not have been correctly emptied. Call to gdcmanon was:\n$anonCmd\n";
+          }
         }
     }
     else {
@@ -231,7 +235,6 @@ sub processFile {
     
     $outputToInputMapping{$newFileWithPath} = $dicomFile;
     $dicomSeriesFileCounter{"${timepoint}/${seriesDir}"}++;
-    
 
 }
 
