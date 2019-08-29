@@ -15,24 +15,24 @@ use FindBin qw($Bin);
 my $usage = qq {
   Usage: dicom2series <output_dir> <empty_fields> <rename_files> <dicom_directory> 
 
-    <output_dir> - output base directory, which should be equal to the subject's unique identifier
+    <output_dir> - output base directory, which should be equal to the subject unique identifier
  
     <empty_fields> - 1 if you want to empty certain fields the output, 0 otherwise. If 1, fields listed in the config file
       pipedream/config/dicomFieldsToEmpty.txt will be emptied in the output. The input is unchanged. This option is deliberately
       not named "anonymize" because there are multiple definitions of what it means to anonymize a dicom header.
 
       gdcmanon will return a non-zero exit code if it cannot empty a field because it does not exist. Therefore, the default
-      list of fields to empty is fairly minimal. Do not rely on this script to de-identify data. 
+      list of fields to empty is fairly minimal. 
 
-      Private fields cannot be altered by gdcmanon. Some PACS systems will copy patient information into private fields where
-      they can't be touched. Always check the output to ensure that the required fields were removed successfully.
+      Emptying of private tags is untested, and may not work. Some PACS systems will copy patient information into private fields
+      Always check the output to ensure that the required fields were removed successfully.
 
     <rename_files> - 1 if you want to rename files in the output directory, 0 otherwise.
 
     <dicom_directory> - A directory that will be searched recursively for dicom files.
 
     dicom2series requires that all input DICOM files pertain to the same subject. That is, you need to call dicom2series
-    separately for each subject's data. It is not necessary to separate data from the same subject by time point; that will
+    separately for each subject. It is not necessary to separate data from the same subject by time point; that will
     be done automatically. If the input contains both DICOM and non DICOM files, the non DICOM files will be ignored.
  
 
